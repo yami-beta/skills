@@ -18,12 +18,13 @@ skills/
 
 ## Issue-driven development workflow
 
-以下のスキルを順に組み合わせると、要件 Issue から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
+人間が作成した要件 Issue を起点に、以下のスキルを順に組み合わせると、要件の精緻化から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
+
+要件 Issue は自由形式で、背景や要望だけをカジュアルに記載して構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って目的、スコープ、要件、受入条件、未決事項を明示してから設計へ進みます。
 
 | Skill | 役割 |
 | --- | --- |
-| [`gh-create-requirement-issue`](skills/gh-create-requirement-issue/SKILL.md) | 要件を構造化して親 Issue を作る |
-| [`gh-plan-requirement-issue`](skills/gh-plan-requirement-issue/SKILL.md) | 調査・設計・実装計画を親 Issue に追記する |
+| [`gh-plan-requirement-issue`](skills/gh-plan-requirement-issue/SKILL.md) | 要件を精緻化し、調査・設計・実装計画を親 Issue に追記する |
 | [`gh-split-requirement-issue`](skills/gh-split-requirement-issue/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
@@ -33,7 +34,7 @@ skills/
 
 定期実行では、最初に `gh-update-task-readiness` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。
 
-イベント駆動では、task Issue に `workflow:ready` が付いたイベントから `gh-implement-ready-task` を実行し、task Issue が close されたイベントから `gh-update-task-readiness` の単一 Issue モードを実行します。要件作成・設計・分割の3スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
+イベント駆動では、task Issue に `workflow:ready` が付いたイベントから `gh-implement-ready-task` を実行し、task Issue が close されたイベントから `gh-update-task-readiness` の単一 Issue モードを実行します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
 
 どちらの方式でも、task は GitHub の native sub-issue として親要件へ関連付け、Issue 本文の `- Depends on: #123, #124` を依存関係の正本として使います。
 

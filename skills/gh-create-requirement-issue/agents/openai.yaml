@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Requirement Issue"
-  short_description: "Create a structured GitHub requirement issue"
-  default_prompt: "Use $gh-create-requirement-issue to turn these requirements into a GitHub issue."
