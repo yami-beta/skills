@@ -1,0 +1,4 @@
+interface:
+  display_name: "Find Ready Task"
+  short_description: "Select an actionable task for scheduled agents"
+  default_prompt: "Use $gh-find-ready-task to select the next task that can be implemented."

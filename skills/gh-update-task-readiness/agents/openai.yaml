@@ -1,0 +1,4 @@
+interface:
+  display_name: "Update Task Readiness"
+  short_description: "Unblock dependent tasks after prerequisites close"
+  default_prompt: "Use $gh-update-task-readiness to update tasks affected by this closed issue."
