@@ -2,6 +2,18 @@
 
 個人利用する [Agent Skills](https://agentskills.io/) のコレクションです。各 skill は [Agent Skills specification](https://agentskills.io/specification) に従います。
 
+## Installation
+
+[GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。
+
+```sh
+gh skill install yami-beta/skills --all --agent claude-code --scope user
+```
+
+更新は `gh skill update --all` で行います。リリースタグは作成していないため、既定ブランチの HEAD が常に取得されます。
+
+`~/.claude/skills/` へ配置されるのは複製であり、`gh skill update` で上書きされます。skill を変更するときはこのリポジトリを編集してください。
+
 ## Repository structure
 
 ```text
@@ -15,6 +27,17 @@ skills/
 ```
 
 `SKILL.md` の `name` は親ディレクトリ名と一致させ、64文字以内の lowercase kebab-case にします。`description` には skill の機能と発火条件の両方を記載します。`agents/` は Agent Skills specification が許容する追加ディレクトリであり、skill の移植性に必要な情報は `SKILL.md` と標準リソース内に保持します。
+
+## Git/GitHub workflow
+
+日々の commit と Pull Request 操作を担う skill です。`pr-create` は未コミットの変更があれば `commit` を呼び、PR 作成後に任意で `pr-monitor` を呼びます。`pr-merge` も CI が pending のとき `pr-monitor` を呼びます。
+
+| Skill | 役割 |
+| --- | --- |
+| [`commit`](skills/commit/SKILL.md) | 変更を確認し、Conventional Commits 形式の commit を作成する |
+| [`pr-create`](skills/pr-create/SKILL.md) | 未コミットの変更を commit し、push して Pull Request を作成する |
+| [`pr-merge`](skills/pr-merge/SKILL.md) | CI とレビュー状態を確認し、リポジトリの慣習に応じた方法で merge する |
+| [`pr-monitor`](skills/pr-monitor/SKILL.md) | CI チェックの完了を監視し、結果を報告する |
 
 ## Issue-driven development workflow
 
@@ -40,10 +63,10 @@ skills/
 
 ## Validation
 
-公式の [`skills-ref`](https://github.com/agentskills/agentskills/tree/main/skills-ref) をインストールした環境で、各 skill を検証します。
+`gh skill publish --dry-run` で、全 skill を Agent Skills specification に対して検証します。
 
 ```sh
-for skill in skills/*; do
-  skills-ref validate "$skill"
-done
+gh skill publish --dry-run
 ```
+
+skill 名とディレクトリ名の一致、必須 frontmatter（`name` / `description`）、`allowed-tools` が文字列であること、install metadata（`metadata.github-*`）が混入していないことを検査します。`license` 未指定の warning は、リポジトリルートの `LICENSE` を正とするため許容します。
