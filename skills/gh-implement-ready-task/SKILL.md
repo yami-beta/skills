@@ -1,6 +1,6 @@
 ---
 name: gh-implement-ready-task
-description: Implement one specified GitHub task issue that is ready, verify the change, push a focused branch, and open a pull request that closes the task on merge. Use after a ready-label event or after gh-find-ready-task has selected and claimed a task; do not use this skill to scan the backlog.
+description: Implement one specified actionable GitHub task sub-issue, verify the change, push a focused branch, and open a pull request that closes the task on merge without relying on workflow labels. Use after task creation, a prerequisite issue closes, or gh-find-ready-task has selected and claimed a task; do not use this skill to scan the backlog.
 ---
 
 # Implement Ready Task
@@ -11,9 +11,9 @@ description: Implement one specified GitHub task issue that is ready, verify the
 
 1. 対象 repository と単一の task Issue を特定する。Issue が指定されていなければ backlog を探索せず、呼び出し元に対象を要求する。
 2. Issue 本文、親要件、設計、コメント、repository 規約を読む。
-3. `Depends on` の全 Issue が closed であることを GitHub 上で再確認する。ラベルだけを信用しない。不正な dependency または open dependency があれば実装せず `workflow:blocked` に整合させる。
+3. `Depends on` の全 Issue が closed であることを GitHub 上で再確認する。不正な dependency または open dependency があれば実装せず、blocked の理由を返す。
 4. 同じ task を close する open PR、既存 branch、他者の claim を検索する。既存 PR があれば重複実装せず、その URL を返す。
-5. `workflow:ready` なら自分の claim marker を付けて `workflow:in-progress` に遷移する。他者が確保済みなら停止する。
+5. 自分の active claim がなければ、可能なら自分を assign し、claim marker を付ける。他者の assignee または未解除 claim があれば停止する。claim 後に Issue を再取得して競合がないことを確認する。
 
 ## Implementation
 
@@ -27,7 +27,7 @@ description: Implement one specified GitHub task issue that is ready, verify the
    - 検証結果
    - リスクまたは未検証事項
    - 同じ repository の task を merge 時に閉じる `Closes #<task-number>`
-7. Issue に PR をリンクし、`workflow:in-progress` のままにする。PR 作成時点では Issue を close しない。
+7. Issue に PR をリンクする。open PR と assignee/claim が in-progress の根拠になるため、別の状態を保存しない。PR 作成時点では Issue を close しない。
 8. PR URL、変更概要、test 結果、残った懸念を返す。
 
 ## Failure handling
@@ -35,3 +35,5 @@ description: Implement one specified GitHub task issue that is ready, verify the
 - test failure や権限不足で完了できない場合、実施内容と blocker を Issue または呼び出し元へ明確に残す。途中変更を破壊的に捨てない。
 - PR 作成結果が不明な timeout 後は、head branch と `Closes` 対象で検索してから再試行する。
 - task の要件を満たさない partial PR は、明示的な方針がない限り作らない。
+- 実装前に停止し、自分が作った claim だけを安全に解除できる場合は unassign して release marker を残す。コードまたは PR が存在する場合は claim を維持して状況を報告する。
+- Issue label を readiness または進捗の判定に使わない。

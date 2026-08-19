@@ -53,13 +53,29 @@ skills/
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`gh-update-task-readiness`](skills/gh-update-task-readiness/SKILL.md) | prerequisite の完了後に後続 task を着手可能にする |
 
+### Label-free state model
+
+このワークフローは Issue label を使わない。状態を別の metadata として重複保存せず、GitHub 上の正本から実行時に導出する。
+
+| 状態 | 判定方法 |
+| --- | --- |
+| 要件 Issue | ワークフローへ指定された起点 Issue |
+| 設計済み | 完成した `ai-design` marker 区間があり、task 分割を妨げる未決事項がない |
+| task | 要件 Issue に属する open な native sub-issue |
+| blocked | `Depends on` に open または確認不能な Issue がある |
+| actionable | 全 dependency が closed で、active claim、assignee、open PR がない |
+| in progress | active claim、assignee、または task を閉じる open PR がある |
+| completed | task Issue が closed |
+
+task 本文の `- Depends on: #123, #124` を依存関係の正本とする。対応する release marker がない claim marker を active claim とする。claim comment は並行実行の排他と監査にだけ使い、task の readiness は常に dependency の実状態から再計算する。
+
 ### Trigger patterns
 
 定期実行では、最初に `gh-update-task-readiness` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。
 
-イベント駆動では、task Issue に `workflow:ready` が付いたイベントから `gh-implement-ready-task` を実行し、task Issue が close されたイベントから `gh-update-task-readiness` の単一 Issue モードを実行します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
+イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-update-task-readiness` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
 
-どちらの方式でも、task は GitHub の native sub-issue として親要件へ関連付け、Issue 本文の `- Depends on: #123, #124` を依存関係の正本として使います。
+どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
 
 ## Validation
 

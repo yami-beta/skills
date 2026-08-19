@@ -9,7 +9,7 @@ description: Refine, investigate, and design an existing human-authored GitHub r
 
 ## Workflow
 
-1. 指定された対象 Issue の本文、コメント、リンク、repository 規約を読む。対象が指定されていなければ確認し、新規 Issue で代用しない。`type:requirement` でない場合も、内容が要件 Issue なら処理できる。
+1. 指定された対象 Issue の本文、コメント、リンク、repository 規約を読む。対象が指定されていなければ確認し、新規 Issue で代用しない。Issue の分類 metadata は要求しない。
 2. Issue が自由形式または不完全であることを許容し、元の記述から利用者、課題、目的、in-scope、out-of-scope、機能・非機能要件、検証可能な受入条件を抽出して構造化する。記載がない項目を埋めるために意図を捏造しない。
 3. codebase、tests、設定、関連 Issue/PR を調べ、現在の挙動、制約、用語、変更境界を把握する。調査結果で要件を具体化できる場合は根拠とともに反映し、根拠のないファイル名や API を捏造しない。
 4. 事実、仮定、未決事項を分ける。
@@ -19,8 +19,8 @@ description: Refine, investigate, and design an existing human-authored GitHub r
 5. 代替案が実質的にある場合は比較し、採用案と理由を記録する。
 6. [assets/design-section.md](assets/design-section.md) に従い、精緻化した要件、設計、変更箇所、移行、テスト、rollout、リスク、タスク分割方針を作る。
 7. `<!-- ai-design:start -->` と `<!-- ai-design:end -->` の区間を Issue 本文末尾へ追記する。区間が既にあればその区間だけ更新し、元の要望と人手の追記を保持する。
-8. `workflow:planning` を外して `workflow:planned` を付ける。ただし重大な blocker が残る場合は planning のままにする。
-9. 更新した Issue URL、精緻化した要件の要約、主要な設計判断、残った blocker を返す。
+8. 重大な blocker がなければ、marker 区間が task 分割の入力として完結していることを確認する。blocker があれば未決事項に明記し、設計済みとして扱わない。
+9. 更新した Issue URL、task 分割へ進めるか、精緻化した要件の要約、主要な設計判断、残った blocker を返す。
 
 ## Quality bar
 
@@ -30,3 +30,4 @@ description: Refine, investigate, and design an existing human-authored GitHub r
 - task を作れる粒度まで変更境界を具体化するが、コードを先に実装しない。
 - 設計書を別ファイルとして repository に追加するよう明示されている場合は、そのファイルを正本にし、Issue には要約とリンクを追記する。
 - API 更新が失敗した場合は本文を再取得し、他者の更新を取り込んで marker 区間だけ再適用する。
+- Issue label を状態管理に使わない。設計済みかどうかは `ai-design` marker 区間の内容と blocker の有無から判断する。
