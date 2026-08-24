@@ -1,16 +1,23 @@
 ---
 name: pr-merge
 description: Pull Requestをマージする。マージ前にCIチェックとレビュー状態を確認し、リポジトリのマージ設定と履歴の慣習に応じた方法でマージする。「PRをマージ」「プルリクエストをマージ」などの要求時に使用。
-allowed-tools: Bash(gh pr merge *), Bash(gh pr view *), Bash(gh pr checks *), Bash(gh pr status *), Bash(gh repo view *), Bash(git fetch *), Bash(git log *), Skill(pr-monitor), AskUserQuestion
-argument-hint: [pr-number]
+allowed-tools: Bash(gh pr merge *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh repo view *) Bash(git fetch *) Bash(git log *)
+argument-hint: "[pr-number-or-url]"
 ---
 
 # Pull Request マージワークフロー
 
-## Context
+## Requirements
 
-- pr-number: $ARGUMENTS（未指定の場合は現在のブランチに紐づく Pull Request が対象）
-- 許可されているマージ方法: !`gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed`
+`git`、認証済みの `gh` CLI、ネットワーク接続、Pull Request のマージとブランチ削除の権限を必要とする。
+
+## Input
+
+ユーザーが指定した Pull Request の番号または URL を対象にする。未指定の場合は、現在のブランチに紐づく Pull Request を対象にする。次のコマンドで repository が許可するマージ方法を取得する。
+
+```bash
+gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed
+```
 
 ## Workflow
 
@@ -25,7 +32,7 @@ gh pr checks <pr-number>
 
 - `state` が `OPEN` 以外（`MERGED` / `CLOSED`）の場合: マージ対象外としてその旨を報告して終了する
 - `mergeable` が `CONFLICTING` の場合: コンフリクトの解消が必要な旨を報告して終了する
-- チェックに pending がある場合: `AskUserQuestion` で「CI の完了を待ってからマージするか」を問い、「待つ」が選ばれたら `Skill(pr-monitor)` で完了を待ち、全チェック pass を確認してから Step 2 へ進む。「待たない」が選ばれたら現状を報告して終了する（pending のままのマージ続行はユーザーの明示的な指示があった場合のみ）
+- チェックに pending がある場合: CI の完了を待つかユーザーに確認する。「待つ」が選ばれたら同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <pr-number> --watch --interval 30` で待機する。全チェック pass を確認してから Step 2 へ進む。「待たない」が選ばれたら現状を報告して終了する（pending のままのマージ続行はユーザーの明示的な指示があった場合のみ）
 - チェックに失敗がある、または `reviewDecision` が `CHANGES_REQUESTED` の場合: マージせずその内容を報告して終了する。続行はユーザーの明示的な指示があった場合のみ
 - すべて問題なければ Step 2 へ進む
 
@@ -51,7 +58,7 @@ git log -20 --format='%h %p %s' origin/<base>   # %p の親が2つ以上ある�
 
 ### Step 3: Pull Requestをマージ
 
-マージは取り消せない操作のため、実行前に `AskUserQuestion` で対象 PR（タイトル・URL）とマージ方法を提示し、ユーザーの確認を得る。
+マージは取り消せない操作のため、実行前に対象 PR（タイトル・URL）とマージ方法を提示し、ユーザーの確認を得る。
 
 確認が取れたらマージを実行する:
 

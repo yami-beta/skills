@@ -7,12 +7,18 @@
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。
 
 ```sh
+# Codex
+gh skill install yami-beta/skills --all --agent codex --scope user
+
+# Claude Code
 gh skill install yami-beta/skills --all --agent claude-code --scope user
 ```
 
+`--agent` には利用するエージェントの識別子を指定します。Cursor は `cursor`、Gemini CLI は `gemini-cli` に置き換えます。利用可能な値は `gh skill install --help` で確認できます。
+
 更新は `gh skill update --all` で行います。リリースタグは作成していないため、既定ブランチの HEAD が常に取得されます。
 
-`~/.claude/skills/` へ配置されるのは複製であり、`gh skill update` で上書きされます。skill を変更するときはこのリポジトリを編集してください。
+エージェントごとのディレクトリへ配置されるのは複製であり、`gh skill update` で上書きされます。skill を変更するときはこのリポジトリを編集してください。
 
 ## Repository structure
 
@@ -27,6 +33,8 @@ skills/
 ```
 
 `SKILL.md` の `name` は親ディレクトリ名と一致させ、64文字以内の lowercase kebab-case にします。`description` には skill の機能と発火条件の両方を記載します。`agents/` は Agent Skills specification が許容する追加ディレクトリであり、skill の移植性に必要な情報は `SKILL.md` と標準リソース内に保持します。
+
+`allowed-tools` は Agent Skills specification に従う space-separated string とし、権限付与が実装されていないエージェントでも skill 本体が動作するよう、処理の前提にはしません。`argument-hint` は Claude Code と GitHub Copilot の入力 UI 向け拡張として文字列で記述し、Codex ではこの補助情報の動作を前提にしません。仕様外キーを拒否する厳格な配布経路には、そのままでは使用できない点に注意してください。
 
 ## Git/GitHub workflow
 
@@ -85,4 +93,4 @@ task 本文の `- Depends on: #123, #124` を依存関係の正本とする。�
 gh skill publish --dry-run
 ```
 
-skill 名とディレクトリ名の一致、必須 frontmatter（`name` / `description`）、`allowed-tools` が文字列であること、install metadata（`metadata.github-*`）が混入していないことを検査します。`license` 未指定の warning は、リポジトリルートの `LICENSE` を正とするため許容します。
+skill 名とディレクトリ名の一致、必須 frontmatter（`name` / `description`）、`allowed-tools` が文字列であること、install metadata（`metadata.github-*`）が混入していないことなどを検査します。`license` 未指定の warning は、リポジトリルートの `LICENSE` を正とするため許容します。

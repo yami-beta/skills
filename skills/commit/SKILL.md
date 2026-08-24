@@ -1,25 +1,33 @@
 ---
 name: commit
 description: gitコミットを作成する。変更の確認、コミットメッセージの作成、コミット実行までを一貫して行う。「コミットを作成」「変更をコミット」「git commit」などの要求時に使用。
-allowed-tools: Bash(git status *), Bash(git diff *), Bash(git log *), Bash(git add *), Bash(git commit *), Bash(git branch *), Bash(git switch *), Bash(git symbolic-ref *), Bash(gh pr list *)
-argument-hint: [補足指示]
+allowed-tools: Bash(git status *) Bash(git diff *) Bash(git log *) Bash(git add *) Bash(git commit *) Bash(git branch *) Bash(git switch *) Bash(git symbolic-ref *) Bash(gh pr list *)
+argument-hint: "[補足指示]"
 ---
 
 # Gitコミットを作成
 
-## Context
+## Requirements
 
-$ARGUMENTS
+`git` を使用する。GitHub の Pull Request 運用を判定する場合は、認証済みの `gh` CLI も使用する。`gh` を利用できず判断材料が足りない場合は、トピックブランチを作成する。
+
+## Input
+
+明示的なスキル呼び出しに続けて渡されたテキスト、または同じ依頼内の補足指示を入力として扱い、コミット対象、分割方針、コミットメッセージへ反映する。補足指示がなければ、変更内容から判断する。
 
 ## Workflow
 
 ### Step 1: 変更の確認
 
-- 現在のブランチ: !`git branch --show-current`
-- コミット履歴: !`git log --oneline -20 2>/dev/null`
-- 変更ファイルの一覧を確認: !`git status`
-- ステージされていない変更を確認: !`git diff`
-- ステージされた変更を確認: !`git diff --staged`
+次のコマンドで現在の状態を確認する。
+
+```bash
+git branch --show-current
+git log --oneline -20
+git status
+git diff
+git diff --staged
+```
 
 変更（staged / unstaged / untracked）が一切ない場合は、コミット対象がない旨を報告してワークフローを終了する。
 

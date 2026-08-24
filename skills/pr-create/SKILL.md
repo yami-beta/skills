@@ -1,24 +1,28 @@
 ---
 name: pr-create
 description: Pull Requestを作成する。未コミットの変更があればコミットし、リモートへプッシュしてPRを作成する。「PRを作成」「プルリクエストを作成」などの要求時に使用。
-allowed-tools: Bash(git status *), Bash(git log *), Bash(git diff *), Bash(git push *), Bash(git switch *), Bash(git fetch *), Bash(gh pr create *), Bash(gh pr view *), Bash(gh repo view *), Read, Glob, Skill(commit), Skill(pr-monitor), AskUserQuestion
-argument-hint: [補足指示]
+allowed-tools: Bash(git status *) Bash(git log *) Bash(git diff *) Bash(git push *) Bash(git switch *) Bash(git fetch *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh repo view *) Read Glob
+argument-hint: "[補足指示]"
 ---
 
 # Pull Request 作成ワークフロー
 
-## Context
+## Requirements
 
-$ARGUMENTS
+`git`、認証済みの `gh` CLI、ネットワーク接続、ブランチの push と Pull Request 作成の権限を必要とする。
+
+## Input
+
+明示的なスキル呼び出しに続けて渡されたテキスト、または同じ依頼内の補足指示を入力として扱い、ブランチ、コミット、Pull Request のタイトルと本文へ反映する。補足指示がなければ、変更内容と会話履歴から判断する。
 
 ## Workflow
 
 ### Step 1: 未コミットの差分を確認
 
-変更ファイルの一覧: !`git status --short`
+`git status --short` で変更ファイルを確認する。
 
 - 未コミットの差分なし: Step 2へ進む
-- 未コミットの差分あり: `Skill(commit)` でブランチ、コミット作成後、Step 2へ進む
+- 未コミットの差分あり: 同梱の `commit` スキルが利用可能ならその手順でブランチとコミットを作成する。スキル間連携に対応していない環境では、変更を確認し、必要ならトピックブランチを作成して、関連する変更だけをステージ・コミットする。その後 Step 2へ進む
 
 ### Step 2: ブランチと既存 PR の確認
 
@@ -98,4 +102,4 @@ gh pr create --title "<title>" --body "<body>"
 
 ### Step 7: CI チェックの監視
 
-`AskUserQuestion` で「GitHub Actions のチェック完了を監視しますか？」のように問い、「監視する」「監視しない」の選択肢を提示する。「監視する」が選ばれた場合のみ `Skill(pr-monitor)` を呼び出し、対象 Pull Request のチェックが完了するまで監視し、結果を報告する。
+ユーザーが CI の監視も依頼している場合は、同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <PR> --watch --interval 30` で対象 Pull Request のチェックが完了するまで待ち、最後に `gh pr checks <PR>` で結果を確認する。依頼されていない場合は、監視するか確認してから開始する。
