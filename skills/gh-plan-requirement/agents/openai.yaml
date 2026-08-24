@@ -1,4 +1,4 @@
 interface:
   display_name: "Plan Requirement Issue"
   short_description: "Refine and plan an existing requirement issue"
-  default_prompt: "Use $gh-plan-requirement-issue to refine, plan, and document this requirement issue."
+  default_prompt: "Use $gh-plan-requirement to refine, plan, and document this requirement issue."

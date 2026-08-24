@@ -1,5 +1,5 @@
 ---
-name: gh-split-requirement-issue
+name: gh-split-requirement
 description: Split a planned GitHub requirement issue into implementation task sub-issues and record a dependency DAG without using labels for task type or workflow state. Use when a design is ready to decompose into independently reviewable tasks or when creating GitHub sub-issues with explicit prerequisites.
 ---
 

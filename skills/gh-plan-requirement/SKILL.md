@@ -1,5 +1,5 @@
 ---
-name: gh-plan-requirement-issue
+name: gh-plan-requirement
 description: Refine, investigate, and design an existing human-authored GitHub requirement issue, turning an informal or incomplete request into explicit goals, scope, requirements, acceptance criteria, and an implementation plan without losing the original text. Use when a rough requirement issue needs clarification, technical discovery, architecture decisions, validation strategy, or planning before task decomposition.
 ---
 

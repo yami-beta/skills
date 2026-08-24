@@ -1,4 +1,4 @@
 interface:
   display_name: "Split Requirement Issue"
   short_description: "Create dependent task sub-issues from a plan"
-  default_prompt: "Use $gh-split-requirement-issue to split this planned requirement into task issues."
+  default_prompt: "Use $gh-split-requirement to split this planned requirement into task issues."

@@ -55,8 +55,8 @@ skills/
 
 | Skill | 役割 |
 | --- | --- |
-| [`gh-plan-requirement-issue`](skills/gh-plan-requirement-issue/SKILL.md) | 要件を精緻化し、調査・設計・実装計画を親 Issue に追記する |
-| [`gh-split-requirement-issue`](skills/gh-split-requirement-issue/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
+| [`gh-plan-requirement`](skills/gh-plan-requirement/SKILL.md) | 要件を精緻化し、調査・設計・実装計画を親 Issue に追記する |
+| [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`gh-update-task-readiness`](skills/gh-update-task-readiness/SKILL.md) | prerequisite の完了後に後続 task を着手可能にする |
