@@ -59,7 +59,7 @@ skills/
 | [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
-| [`gh-update-task-readiness`](skills/gh-update-task-readiness/SKILL.md) | prerequisite の完了後に後続 task を着手可能にする |
+| [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | prerequisite の完了後に後続 task を着手可能にし、全 task 完了時に要件 Issue を close する |
 
 ### Label-free state model
 
@@ -74,14 +74,15 @@ skills/
 | actionable | 全 dependency が closed で、active claim、assignee、open PR がない |
 | in progress | active claim、assignee、または task を閉じる open PR がある |
 | completed | task Issue が closed |
+| 要件の完了 | 全 sub-issue が completed として closed（自動 close の対象） |
 
 task 本文の `- Depends on: #123, #124` を依存関係の正本とする。対応する release marker がない claim marker を active claim とする。claim comment は並行実行の排他と監査にだけ使い、task の readiness は常に dependency の実状態から再計算する。
 
 ### Trigger patterns
 
-定期実行では、最初に `gh-update-task-readiness` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。
+定期実行では、最初に `gh-reconcile-issue-state` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。
 
-イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-update-task-readiness` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
+イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-reconcile-issue-state` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
 
 どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
 

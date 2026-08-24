@@ -1,4 +1,0 @@
-interface:
-  display_name: "Update Task Readiness"
-  short_description: "Derive readiness after prerequisite completion"
-  default_prompt: "Use $gh-update-task-readiness to evaluate tasks affected by this closed issue."
