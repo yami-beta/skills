@@ -49,7 +49,7 @@ skills/
 
 ## Issue-driven development workflow
 
-人間が作成した要件 Issue を起点に、以下のスキルを順に組み合わせると、要件の精緻化から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
+人間が作成した要件 Issue、または実装中に agent が提案した follow-up Issue を起点に、以下のスキルを順に組み合わせると、要件の精緻化から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
 
 要件 Issue は自由形式で、背景や要望だけをカジュアルに記載して構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って目的、スコープ、要件、受入条件、未決事項を明示してから設計へ進みます。
 
@@ -60,6 +60,7 @@ skills/
 | [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
+| [`gh-create-follow-up-issue`](skills/gh-create-follow-up-issue/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
 | [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
 
 ### Workflow metadata contract
@@ -68,7 +69,7 @@ GitHub native metadata を事実の正本とし、固定 label を検索、可�
 
 | Label | 意味 |
 | --- | --- |
-| `kind:requirement` | 人間が作成した要件または複数 task をまとめる親 Issue |
+| `kind:requirement` | 人間または agent が作成した要件、または複数 task をまとめる親 Issue |
 | `kind:task` | 原則1つの Pull Request で完了する実装 sub-issue |
 | `workflow:backlog` | 未整理または planning 開始前 |
 | `workflow:needs-input` | 人間による判断・入力待ち |
@@ -77,6 +78,7 @@ GitHub native metadata を事実の正本とし、固定 label を検索、可�
 | `workflow:in-progress` | planning、task 分割、実装のいずれかを実行中 |
 | `workflow:review` | Pull Request 作成済みで CI または人間の review 待ち |
 | `automation:enabled` | scheduled agent がこの Issue を処理してよいという opt-in gate |
+| `origin:agent` | agent が発見し、人間の triage 待ちとして作成した follow-up Issue |
 
 open な workflow 管理対象 Issue は `kind:*` と `workflow:*` をそれぞれ1つだけ持つ。`automation:enabled` は workflow state とは独立して付け外しする。priority label は作らず、repository の規約、milestone due date、親 Issue 内の task 順、Issue 番号から dispatch 時に決める。
 
@@ -95,6 +97,14 @@ task:        blocked | ready -> in-progress -> review -> closed
 ```
 
 label の更新だけでは複数エージェント間の排他を保証できない。対応する release marker がない `<!-- ai-task-claim:<actor-or-run-id> -->` を active claim とし、claim 後に Issue を再取得して assignee、別 claim、open Pull Request を再確認する。
+
+### Agent-created follow-up work
+
+実装または review 中に現在の task 範囲外の改善を見つけた場合、現在の変更へ混ぜず、Pull Request の作成と確認後に `gh-create-follow-up-issue` で standalone requirement を提案します。作業中は候補と根拠を保持し、最後に関連する候補をまとめて重複を検索するため、発見のたびに Issue を作成しません。
+
+作成する Issue は `kind:requirement`、`workflow:backlog`、`origin:agent` を持ち、source Issue/PR、確認できた根拠、期待成果、現在の task との境界、受入条件を記録します。native parent、dependency、assignee、claim、`automation:enabled` は設定しません。人間が triage し、採用する場合に `gh-plan-requirement` から通常の planning workflow を開始します。
+
+follow-up の作成失敗や重複は、完成した source Pull Request を取り消す理由にしません。security finding や秘密情報は公開 Issue にせず、人間へ安全な報告経路が必要なことを返します。定期的な codebase 探索による Issue 生成はこの workflow に含めず、初期運用では実装・review 中に得た具体的な発見だけを対象にします。
 
 ### Trigger patterns
 

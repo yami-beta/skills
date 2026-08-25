@@ -1,11 +1,11 @@
 ---
 name: gh-plan-requirement
-description: Refine, investigate, and design an existing human-authored GitHub requirement issue while maintaining its kind and planning workflow labels. Use when a rough requirement needs clarification, technical discovery, architecture decisions, validation strategy, or planning before task decomposition.
+description: Refine, investigate, and design an existing human- or agent-authored GitHub requirement issue while maintaining its kind and planning workflow labels. Use when a rough requirement needs clarification, technical discovery, architecture decisions, validation strategy, or planning before task decomposition.
 ---
 
 # Plan Requirement Issue
 
-人間がカジュアルに作成した既存の要件 Issue を精緻化・調査し、実装可能な設計と計画を Issue 本文へ追記する。このスキルでは要件 Issue を新規作成しない。曖昧さはセッション内の対話で利用者に質問して解決するため、利用者と対話できる文脈で実行する。
+人間がカジュアルに作成した要件 Issue、または agent が作成した follow-up requirement を精緻化・調査し、実装可能な設計と計画を Issue 本文へ追記する。このスキルでは要件 Issue を新規作成しない。曖昧さはセッション内の対話で利用者に質問して解決するため、利用者と対話できる文脈で実行する。
 
 ## Workflow
 

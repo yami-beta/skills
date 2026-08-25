@@ -20,6 +20,7 @@ description: Set up or verify the fixed GitHub labels required by this issue-dri
 | `workflow:in-progress` | `1D76DB` | Planning, splitting, or implementation is in progress |
 | `workflow:review` | `A371F7` | Pull request is waiting for CI or human review |
 | `automation:enabled` | `006B75` | Scheduled agents may process this issue |
+| `origin:agent` | `BFDADC` | Created by an agent for later human triage |
 
 ## Workflow
 
@@ -38,4 +39,4 @@ description: Set up or verify the fixed GitHub labels required by this issue-dri
 - 同名 label がある状態で作成を再試行せず、API timeout 後は label 一覧を再取得して結果を確認する。
 - 部分的に作成した後で失敗した場合は成功分を削除しない。再実行で残りだけを作成できる状態として報告する。
 - workflow skills は必要 label が欠けている場合に typo や類似名の label を暗黙作成せず、この setup skill の実行を要求する。
-- この skill の実行は Issue に `automation:enabled` を付ける許可を意味しない。
+- この skill の実行は Issue に `automation:enabled` または `origin:agent` を付ける許可を意味しない。
