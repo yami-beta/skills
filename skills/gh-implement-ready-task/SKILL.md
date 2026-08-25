@@ -1,6 +1,6 @@
 ---
 name: gh-implement-ready-task
-description: Implement one specified GitHub task after validating its workflow labels and native dependencies, then move it from in progress to review and open a pull request. Use after task creation, dependency completion, or gh-find-ready-task; do not use this skill to scan the backlog.
+description: Implement one specified GitHub task after validating its workflow labels and native dependencies, open a pull request, and capture eligible out-of-scope follow-ups for human triage. Use after task creation, dependency completion, or gh-find-ready-task; do not use this skill to scan the backlog.
 ---
 
 # Implement Ready Task
@@ -23,7 +23,7 @@ description: Implement one specified GitHub task after validating its workflow l
 1. 現在の worktree と未保存変更を確認し、ユーザーの変更を保持する。repository 規約に従う task 専用 branch または worktree を使う。
 2. Issue の成果と受入条件に必要な最小変更を実装する。スコープ外の refactor を混ぜない。
 3. repository の既存 test pattern に沿って test を追加または更新する。関連する test、lint、typecheck、build を実行し、結果を記録する。
-4. diff を自己レビューし、受入条件、互換性、エラー処理、セキュリティ、migration を確認する。
+4. diff を自己レビューし、受入条件、互換性、エラー処理、セキュリティ、migration を確認する。現在の task 範囲外にある独立した改善を見つけた場合は変更へ混ぜず、根拠とともに follow-up 候補として保持する。
 5. task を表す commit を作り、branch を push する。失敗時に同名 branch が存在するなら内容と所有者を確認し、上書きしない。
 6. Pull Request を作る。本文には次を含める。
    - 変更概要と設計判断
@@ -31,12 +31,14 @@ description: Implement one specified GitHub task after validating its workflow l
    - リスクまたは未検証事項
    - 同じ repository の task を merge 時に閉じる `Closes #<task-number>`
 7. PR が作成されたことと task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
-8. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、test 結果、残った懸念を返す。
+8. PR と単一の `workflow:review` を確認した後、保持した follow-up 候補があれば関連する候補をまとめ、最大3件まで `gh-create-follow-up-issue` へ渡す。候補がなければ呼び出さない。follow-up の重複、setup blocker、作成失敗は現在の PR を取り消す理由にせず、結果とともに報告する。
+9. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、test 結果、作成または再利用した follow-up、残った懸念を返す。
 
 ## Failure handling
 
 - test failure や権限不足で完了できない場合、実施内容と blocker を Issue または呼び出し元へ明確に残す。途中変更を破壊的に捨てない。
 - PR 作成結果が不明な timeout 後は、head branch と `Closes` 対象で検索してから再試行する。
+- task が完了しなかった場合でも独立して再現できる follow-up 候補は最終 handoff で `gh-create-follow-up-issue` へ渡せるが、元 task の failure と blocker を先に報告する。
 - task の要件を満たさない partial PR は、明示的な方針がない限り作らない。
 - label 更新の直前に Issue を再取得する。既存の無関係な label と `automation:enabled` は保持し、目標 workflow label の存在と更新後の単一性を確認する。workflow skill が label を作成してはならない。
 - コード変更前に `workflow:in-progress` への更新または確認が失敗した場合は実装しない。自分が作った claim だけを安全に解除できる場合は unassign し、release marker を残す。
