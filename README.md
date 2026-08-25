@@ -55,32 +55,50 @@ skills/
 
 | Skill | 役割 |
 | --- | --- |
+| [`gh-setup-issue-workflow`](skills/gh-setup-issue-workflow/SKILL.md) | workflow が使う固定 label を repository に作成・検証する |
 | [`gh-plan-requirement`](skills/gh-plan-requirement/SKILL.md) | 要件を精緻化し、調査・設計・実装計画を親 Issue に追記する |
 | [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | prerequisite の完了後に後続 task を着手可能にし、全 task 完了時に要件 Issue を close する |
 
-### Label-free state model
+### Workflow metadata contract
 
-このワークフローは Issue label を使わない。状態を別の metadata として重複保存せず、GitHub 上の正本から実行時に導出する。
+GitHub native metadata を事実の正本とし、固定 label を検索、可視化、scheduled dispatch に使う。workflow を導入する repository では、最初に `gh-setup-issue-workflow` で必要 label を準備する。
 
-| 状態 | 判定方法 |
+| Label | 意味 |
 | --- | --- |
-| 要件 Issue | ワークフローへ指定された起点 Issue |
-| 設計済み | 完成した `ai-design` marker 区間があり、task 分割を妨げる未決事項がない |
-| task | 要件 Issue に属する open な native sub-issue |
-| blocked | `Depends on` に open または確認不能な Issue がある |
-| actionable | 全 dependency が closed で、active claim、assignee、open PR がない |
-| in progress | active claim、assignee、または task を閉じる open PR がある |
-| completed | task Issue が closed |
-| 要件の完了 | 全 sub-issue が completed として closed（自動 close の対象） |
+| `kind:requirement` | 人間が作成した要件または複数 task をまとめる親 Issue |
+| `kind:task` | 原則1つの Pull Request で完了する実装 sub-issue |
+| `workflow:backlog` | 未整理または planning 開始前 |
+| `workflow:needs-input` | 人間による判断・入力待ち |
+| `workflow:ready` | 次の workflow を開始できる |
+| `workflow:blocked` | open または確認不能な dependency がある |
+| `workflow:in-progress` | planning、task 分割、実装のいずれかを実行中 |
+| `workflow:review` | Pull Request 作成済みで CI または人間の review 待ち |
+| `automation:enabled` | scheduled agent がこの Issue を処理してよいという opt-in gate |
 
-task 本文の `- Depends on: #123, #124` を依存関係の正本とする。対応する release marker がない claim marker を active claim とする。claim comment は並行実行の排他と監査にだけ使い、task の readiness は常に dependency の実状態から再計算する。
+open な workflow 管理対象 Issue は `kind:*` と `workflow:*` をそれぞれ1つだけ持つ。`automation:enabled` は workflow state とは独立して付け外しする。priority label は作らず、repository の規約、milestone due date、親 Issue 内の task 順、Issue 番号から dispatch 時に決める。
+
+状態の事実が矛盾する場合は、次の優先順位で扱う。
+
+1. Issue の open / closed を完了状態の正本にする。`workflow:done` は作らず、closed Issue の workflow label は判定に使わない。
+2. requirement と task の階層は native sub-issue、task の prerequisite は native issue dependency を正本にする。
+3. assignee、active claim、task を閉じる open Pull Request を実行中状態の根拠にする。
+4. `workflow:*` は上記の事実を検索・表示しやすくした materialized state とし、reconciliation で欠落・重複・矛盾を修復する。
+
+基本遷移は次のとおり。
+
+```text
+requirement: backlog -> in-progress -> needs-input | ready -> in-progress -> closed
+task:        blocked | ready -> in-progress -> review -> closed
+```
+
+label の更新だけでは複数エージェント間の排他を保証できない。対応する release marker がない `<!-- ai-task-claim:<actor-or-run-id> -->` を active claim とし、claim 後に Issue を再取得して assignee、別 claim、open Pull Request を再確認する。
 
 ### Trigger patterns
 
-定期実行では、最初に `gh-reconcile-issue-state` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。
+定期実行では、最初に `gh-reconcile-issue-state` の全件整合モードを実行し、次に `gh-find-ready-task`、最後に `gh-implement-ready-task` を実行します。自動実装候補は `kind:task`、`workflow:ready`、`automation:enabled` をすべて持つ open Issue に限定します。
 
 イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-reconcile-issue-state` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
 
