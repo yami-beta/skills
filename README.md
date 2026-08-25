@@ -60,7 +60,7 @@ skills/
 | [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
-| [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | prerequisite の完了後に後続 task を着手可能にし、全 task 完了時に要件 Issue を close する |
+| [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
 
 ### Workflow metadata contract
 
@@ -104,12 +104,63 @@ label の更新だけでは複数エージェント間の排他を保証でき�
 
 どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
 
+### Scheduled execution
+
+定期実行は常駐 daemon を前提にせず、Codex、Claude Code など利用するエージェントのスケジュール機能から、repository ごとに次の1回分の処理を起動します。
+
+1. `gh-reconcile-issue-state` を全件整合モードで実行する。
+2. 整合に成功した場合だけ `gh-find-ready-task` で task を1件選択して claim する。
+3. task を claim できた場合だけ、その Issue を指定して `gh-implement-ready-task` を実行する。
+
+1回の実行で扱う task は最大1件とし、repository 単位で実行が重ならないよう scheduler の concurrency を設定します。各段階が失敗した場合、metadata を確定できない場合、または claim の競合を検出した場合は、そこで停止します。後続段階を推測で続行したり、label だけを根拠に実装を開始したりしません。
+
+Codex と Claude Code ではスケジュールを登録する UI や設定方法だけが異なります。どのエージェントでも、前節の Installation に従って同じ skill を導入し、次のような共通 prompt を使用できます。実際の schedule 作成は利用するエージェント側で行います。
+
+```text
+In repository <owner/repo>:
+1. Use $gh-reconcile-issue-state in full reconciliation mode.
+2. Only if it succeeds, use $gh-find-ready-task.
+3. If exactly one task is claimed, use $gh-implement-ready-task for that issue.
+Stop on unknown metadata, a setup blocker, a failed stage, or a claim conflict.
+Process at most one task in this run.
+```
+
+### Migration from body dependency declarations
+
+旧運用の task 本文に `- Depends on: #123, #456` のような行がある repository は、次の順序で native issue dependencies へ移行します。移行中は対象 Issue から `automation:enabled` を外し、scheduled execution を停止しておきます。
+
+1. `gh-setup-issue-workflow` で固定 label を作成・検証する。
+2. open な管理対象 task を列挙し、本文の依存宣言と想定する親 requirement を記録する。
+3. 参照先 Issue が同じ repository に存在すること、自己参照や循環がないこと、親子関係が一意であることを確認する。不明な参照は推測で補わない。
+4. native sub-issue の parent と native `blocked by` relationship を設定する。本文の依存宣言はまだ削除しない。
+5. Issue を再取得し、`parent` と pagination を含む `blockedBy` の集合が手順2の記録と完全に一致することを確認する。
+6. 完全一致した task だけ、本文から旧依存宣言と不要になった空の見出しを削除する。
+7. 本文と native metadata をもう一度取得してから `gh-reconcile-issue-state` を実行し、`workflow:ready` または `workflow:blocked` が native metadata と一致することを確認する。
+
+native relationship の設定、再取得、または照合に失敗した task では、本文の旧依存宣言を削除せず、`automation:enabled` も付けません。その task の自動実装は停止し、確認できた事実と失敗箇所を報告します。途中まで native relationship が設定された場合も自動化は停止したままにし、再取得した実状態と移行前の記録を比較してから同じ手順を再開します。
+
+### Rollout and rollback
+
+移行後は一度に全面開放せず、次の順で自動化を有効にします。
+
+1. 全管理対象 Issue の native metadata と workflow label を reconciliation で検証する。
+2. native prerequisite をすべて満たした少数の ready task にだけ `automation:enabled` を付ける。
+3. 共通 prompt を手動で1回実行し、reconciliation、claim、Pull Request、Issue close 後の後続 task 解放を確認する。
+4. 問題がなければ、対象 requirement または task 群を段階的に増やす。
+
+緊急停止するときは schedule を無効化し、未着手の対象 Issue から `automation:enabled` を外します。native sub-issue と issue dependency は手動運用にも必要な事実なので削除しません。進行中の claim や Pull Request は自動的に取り消さず、担当者が完了させるか、claim 所有者が release marker を残して明示的に解放します。修正後は reconciliation と少数 task での手動実行から再開します。rollback は自動実装の停止を意味し、検証済み native metadata を旧本文形式へ戻す操作ではありません。
+
 ## Validation
 
 `gh skill publish --dry-run` で、全 skill を Agent Skills specification に対して検証します。
 
 ```sh
+rg -n 'label[-]free|without (using|relying on) label[s]' README.md skills
+rg -n 'Depends[ ]on' skills
+rg -n 'Depends[ ]on' README.md
 gh skill publish --dry-run
 ```
+
+最初の2つの検索は旧 workflow 方針が残っていないことを確認し、結果が0件になることを期待します。3つ目の検索結果はこの移行手順内の例示だけであることを確認します。
 
 skill 名とディレクトリ名の一致、必須 frontmatter（`name` / `description`）、`allowed-tools` が文字列であること、install metadata（`metadata.github-*`）が混入していないことなどを検査します。`license` 未指定の warning は、リポジトリルートの `LICENSE` を正とするため許容します。
