@@ -1,6 +1,6 @@
 ---
 name: gh-implement-ready-task
-description: Implement one specified actionable GitHub task sub-issue, verify the change, push a focused branch, and open a pull request that closes the task on merge without relying on workflow labels. Use after task creation, a prerequisite issue closes, or gh-find-ready-task has selected and claimed a task; do not use this skill to scan the backlog.
+description: Implement one specified GitHub task after validating its workflow labels and native dependencies, then move it from in progress to review and open a pull request. Use after task creation, dependency completion, or gh-find-ready-task; do not use this skill to scan the backlog.
 ---
 
 # Implement Ready Task
@@ -11,9 +11,12 @@ description: Implement one specified actionable GitHub task sub-issue, verify th
 
 1. 対象 repository と単一の task Issue を特定する。Issue が指定されていなければ backlog を探索せず、呼び出し元に対象を要求する。
 2. Issue 本文、親要件、設計、コメント、repository 規約を読む。
-3. `Depends on` の全 Issue が closed であることを GitHub 上で再確認する。不正な dependency または open dependency があれば実装せず、blocked の理由を返す。
-4. 同じ task を close する open PR、既存 branch、他者の claim を検索する。既存 PR があれば重複実装せず、その URL を返す。
-5. 自分の active claim がなければ、可能なら自分を assign し、claim marker を付ける。他者の assignee または未解除 claim があれば停止する。claim 後に Issue を再取得して競合がないことを確認する。
+3. repository に `kind:task`、`workflow:ready`、`workflow:in-progress`、`workflow:review`、`automation:enabled` が存在することを確認する。欠けていれば暗黙に作成せず、`gh-setup-issue-workflow` が必要な setup blocker として停止する。
+4. task が open な native sub-issue で、`kind:task` とちょうど1つの `workflow:*` を持つことを確認する。未着手なら `workflow:ready`、呼び出し元が既に確保済みなら `workflow:in-progress` でなければ実装しない。scheduled invocation では `automation:enabled` も必須とし、人間または明示的な event invocation ではこの gate を勝手に追加・要求しない。
+5. native `blocked by` relationship を pagination の最後まで取得し、取得件数と API が返す合計数が一致したうえで、blocker がないか全 blocker が closed であることを GitHub 上で再確認する。open、参照不能、循環、自己参照、別 repository、または取得結果が不完全な dependency があれば実装せず、blocked または invalid の理由を返す。本文の dependency 表現へ fallback しない。
+6. 同じ task を close する open PR、既存 branch、他者の assignee または未解除 claim を検索する。既存 PR があれば重複実装しない。PR と task の関係を確認し、現在の `workflow:*` だけを `workflow:review` に置き換えてから、その URL を返す。label 更新に失敗した場合も PR を正本として state drift を報告する。
+7. 自分の active claim がなければ、可能なら自分を assign し、claim marker を付ける。続いて現在の labels を再取得し、既存の `workflow:*` だけを `workflow:in-progress` に置き換える。他者の assignee または未解除 claim があれば停止する。
+8. claim と label 更新後に task を再取得し、native dependency、`kind:task`、単一の `workflow:in-progress`、自分以外の assignee、別 claim、open PR を再確認する。scheduled invocation では `automation:enabled` も再確認する。競合または確認不能な状態があればコードを変更しない。
 
 ## Implementation
 
@@ -27,13 +30,15 @@ description: Implement one specified actionable GitHub task sub-issue, verify th
    - 検証結果
    - リスクまたは未検証事項
    - 同じ repository の task を merge 時に閉じる `Closes #<task-number>`
-7. Issue に PR をリンクする。open PR と assignee/claim が in-progress の根拠になるため、別の状態を保存しない。PR 作成時点では Issue を close しない。
-8. PR URL、変更概要、test 結果、残った懸念を返す。
+7. PR が作成されたことと task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
+8. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、test 結果、残った懸念を返す。
 
 ## Failure handling
 
 - test failure や権限不足で完了できない場合、実施内容と blocker を Issue または呼び出し元へ明確に残す。途中変更を破壊的に捨てない。
 - PR 作成結果が不明な timeout 後は、head branch と `Closes` 対象で検索してから再試行する。
 - task の要件を満たさない partial PR は、明示的な方針がない限り作らない。
-- 実装前に停止し、自分が作った claim だけを安全に解除できる場合は unassign して release marker を残す。コードまたは PR が存在する場合は claim を維持して状況を報告する。
-- Issue label を readiness または進捗の判定に使わない。
+- label 更新の直前に Issue を再取得する。既存の無関係な label と `automation:enabled` は保持し、目標 workflow label の存在と更新後の単一性を確認する。workflow skill が label を作成してはならない。
+- コード変更前に `workflow:in-progress` への更新または確認が失敗した場合は実装しない。自分が作った claim だけを安全に解除できる場合は unassign し、release marker を残す。
+- コード変更、push、または PR が存在する段階では claim と assignee を維持し、失敗箇所を報告する。PR 作成後に `workflow:review` への更新が失敗しても PR を閉じたり作り直したりせず、PR を正本として reconciliation が必要な state drift を報告する。
+- label は進捗の materialized state であり、native dependency、assignee、claim、open PR の確認を省略する理由にしない。GitHub API の部分的な失敗を ready と解釈しない。
