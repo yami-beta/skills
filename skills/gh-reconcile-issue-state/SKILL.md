@@ -1,51 +1,79 @@
 ---
 name: gh-reconcile-issue-state
-description: Reconcile GitHub issue state without labels after prerequisite issues close, return actionable direct dependents, close requirement issues whose sub-issues are all complete, or reconcile the entire task backlog on a schedule. Use from an issue-closed or pull-request-merged event with one source issue, or from a scheduled job to derive actionable, blocked, in-progress, and invalid tasks and completed requirements.
+description: Recompute and repair GitHub issue kind and workflow labels from native relationships, assignments, claims, and closing pull requests, and close completed requirements. Use after a task closes or on a schedule to reconcile a managed issue backlog.
 ---
 
 # Reconcile Issue State
 
-task 本文の dependency と GitHub の実状態を再評価し、後続処理が使える readiness classification を返す。あわせて、全 sub-issue が完了した要件 Issue を close する。Issue を状態保存のために変更しない。要件 Issue の close は導出状態の保存ではなく実体のあるライフサイクル遷移であり、この原則の対象外。
+GitHub native metadata と実行状況を正本として、open な管理対象 Issue の `kind:*` と `workflow:*` を再計算・修復する。全 native sub-issue が完了した requirement は条件を再確認して close する。
+
+## Preconditions and scope
+
+1. 対象 repository を特定し、workflow metadata contract の全固定 label が存在することを確認する。欠けていれば label を暗黙に作成せず、`gh-setup-issue-workflow` が必要な setup blocker として、Issue を変更せず停止する。
+2. 管理対象を native hierarchy と workflow marker から特定する。`ai-design` または `ai-task-index` marker を持つ親、native sub-issue を持つ親を requirement、その native sub-issue を task とする。現在の kind/workflow label だけを候補抽出の正本にせず、label が欠落・誤分類された Issue も修復対象に含める。
+3. closed Issue は完了の正本とし、workflow label を再計算しない。closed task は requirement 完了判定の事実としてのみ読む。
 
 ## Select a mode
 
-- **Event mode**: closed になった1件の source Issue が渡された場合に使う。source を `Depends on` に含む open task と、source の親要件だけを対象にする。
-- **Reconciliation mode**: source Issue がなく定期実行された場合に使う。設計済みの要件 Issue に属する open な native sub-issue と、走査対象の全要件を対象にする。
+- **Event mode**: closed になった1件の source task が渡された場合に使う。source の native `blocking` relationship に含まれる open task と、source の native parent requirement だけを対象にする。PR merge イベントでは `Closes` により実際に closed になった Issue を source とし、PR が merge 済みでも Issue が open なら完了扱いにしない。
+- **Reconciliation mode**: source task がない定期実行で使う。管理対象 requirement と、その open な native sub-issue を pagination の最後まで走査する。
 
-どちらも同じ評価規則を使う。PR merge イベントの場合は、PR の `Closes` keyword で実際に closed になった task Issue を source とする。PR が merge されても Issue が open なら完了扱いにしない。
+どちらの mode でも同じ分類・更新規則を使う。event mode では source の `blocking` を直接依存 task の正本とし、本文や親の task index から dependent を推測しない。
 
-## Task readiness workflow
+## Task classification
 
-1. 候補 task ごとに、本文中の唯一の `- Depends on:` 行を解析する。
-2. 各 dependency の存在と open/closed 状態を GitHub から取得する。task 本文を正本とし、親 Issue の task index や `Blocks` 記述は判定に使わない。
-3. dependency 状態を決める。
-   - `none` または全 dependency が closed: dependency-ready。
-   - 1件以上 open: blocked。
-   - 欠落、複数行、参照不能、別 repository、自己参照、循環: invalid and blocked。
-4. dependency-ready な task について、assignee、未解除 claim、task を閉じる open PR を確認する。
-   - いずれもない: actionable。
-   - 1つ以上ある: in-progress。
-   - dependency が後から invalid または blocked になったのに作業中なら、状態を変更せず警告する。
-5. event mode では直接依存 task のみを評価し、actionable task の番号と URL を呼び出し元へ返す。呼び出し元はそれぞれを `gh-implement-ready-task` へ渡せる。
-6. reconciliation mode では actionable、blocked、in-progress、invalid の一覧と根拠を返す。候補がない場合も成功扱いにする。
-7. 明示的に通知を依頼された場合だけ、`<!-- ai-readiness:<classification>:<dependency-state-hash> -->` marker 付き comment を追加する。同じ評価の comment を重複させず、comment を状態判定の正本にしない。
+各 open task について、native parent、native `blockedBy`、assignees、全 comments、task を閉じる open Pull Request、現在の labels を取得する。collection は pagination の最後まで取得し、取得件数と API の合計数が一致することを確認する。
 
-## Requirement completion workflow
+1. task が同じ repository の native sub-issue であることと、全 blocker の存在・状態を確認する。自己参照、循環、別 repository、参照不能など、事実として確認できた不正 metadata は `invalid` と分類する。
+2. 対応する release marker が後にない `<!-- ai-task-claim:<actor-or-run-id> -->` を active claim とする。claim を時間経過だけで失効させない。
+3. 次の順で目標 workflow label を決める。
+   - invalid metadata または1件以上の open blocker: `workflow:blocked`
+   - blocker がなく、task を閉じる open Pull Request がある: `workflow:review`
+   - blocker がなく、assignee または active claim がある: `workflow:in-progress`
+   - blocker がなく、上記の実行中事実もない: `workflow:ready`
+4. blocker がある task に assignee、claim、open PR が存在する場合は `workflow:blocked` を維持し、作業中に dependency が追加・再openされた競合として警告する。
+5. dependency、comments、assignees、または open PR の取得が不完全なら `unknown` とする。既存 label を変更せず、actionable として返さない。部分的な API failure を blocker なしと解釈しない。
 
-対象要件（event mode は source task の親要件、reconciliation mode は走査した全要件）ごとに完了を判定する。
+既知の invalid task は `kind:task` と `workflow:blocked` に正規化し、invalid の根拠を結果へ含める。`unknown` task は安全な目標状態を確定できないため label 修復を行わない。
 
-1. 次を全て満たす場合に限り close 候補とする。
-   - native sub-issue が1件以上存在し、全件が closed である。
-   - `ai-task-index` marker の task 一覧と実際の sub-issue が一致し、未作成 task がない。
-   - completed 以外の理由（not planned など）で closed になった sub-issue がない。
-2. not planned の sub-issue を含む要件は自動 close せず、要確認として結果に含める。
-3. close 直前に要件 Issue と全 sub-issue を再取得し、条件を再確認する。要件がすでに closed なら何もしない。
-4. close は completed として行い、根拠（全 sub-issue の番号と closed 状態の一覧）を comment で残す。
-5. close した要件と要確認の要件を結果に含めて返す。
+## Requirement classification and completion
 
-## Concurrency rules
+各 open requirement について、本文の design/task-index marker と native sub-issue を取得する。sub-issue は pagination の最後まで取得し、取得件数と API の合計数が一致することを確認する。
 
-- 更新直前に Issue と dependency を再取得する。
-- 他者の assignee、claim、open PR を見つけたら actionable として返さない。
-- 部分的な API failure があれば確認できない task を actionable にせず、確認できない要件を close せず、他の対象の処理は継続する。
-- Issue label を候補抽出、readiness、進捗、完了の判定に使わない。
+- native sub-issue が1件以上あり、1件以上 open: `kind:requirement` と `workflow:in-progress`。
+- native sub-issue がなく、完結した `ai-design` marker があり blocker がない: `kind:requirement` と `workflow:ready`。
+- native sub-issue がなく、明示的な未解決 blocker がある: `kind:requirement` と `workflow:needs-input`。
+- design marker と native sub-issue がなく、単一の `workflow:in-progress` が既にある場合は進行中の planning を推測で上書きしない。それ以外は `kind:requirement` と `workflow:backlog`。
+
+native sub-issue が1件以上あり全件 closed の requirement は、次をすべて満たす場合だけ close 候補とする。
+
+1. `ai-task-index` marker の task 一覧と実際の native sub-issue が完全に一致し、未作成 task や余分な sub-issue がない。
+2. 全 sub-issue が completed として closed され、not planned など completed 以外の理由を含まない。
+3. requirement、task index、全 sub-issue の取得が完全である。
+
+条件を満たさない場合は close せず、確認可能な metadata mismatch なら `workflow:needs-input` に正規化し、API failure なら label も変更せず要確認として返す。close 直前に requirement と全 sub-issue を再取得し、条件を再確認する。根拠となる task 番号と closed reason を `<!-- ai-requirement-completion:<state-hash> -->` marker 付き comment に残してから requirement を completed として close し、同じ根拠の comment を重複させない。
+
+## Label normalization
+
+目標 kind/workflow を確定できた open Issue だけを更新する。
+
+1. 更新直前に Issue と分類に使った全 metadata を再取得し、目標を再計算する。初回評価から事実が変わっていれば最新値を使う。
+2. 現在の `kind:*` と `workflow:*` をすべて除去し、目標 kind と workflow を各1つ追加する。既存の無関係な label と `automation:enabled` は保持する。すでに完全一致している場合は変更しない。
+3. 更新後に Issue、labels、分類事実を再取得する。kind/workflow が各1つでない、または事実が変化して目標が古くなった場合は、最新値で1回だけ再計算・再更新する。
+4. 再試行後も競合、部分失敗、または矛盾が残る場合は変更を重ねず `concurrent update` として報告し、その Issue を actionable にしない。
+
+workflow skill 内で欠けた contract label を作成せず、通常 label や `automation:enabled` を追加・削除しない。
+
+## Results
+
+- event mode では、修復後に `workflow:ready` で native blocker がすべて closed の直接依存 task の番号と URL を返す。呼び出し元は明示的な event invocation として `gh-implement-ready-task` へ渡せる。
+- reconciliation mode では、ready、blocked、in-progress、review、invalid、unknown、concurrent-update の一覧、変更した labels、変更不要だった Issue を根拠付きで返す。候補がない場合も成功扱いにする。
+- close した requirement、metadata mismatch や not planned のため close しなかった requirement、API failure で確認不能だった requirement を区別して返す。
+
+## Concurrency and failure rules
+
+- label 更新と requirement close の直前・直後に native facts を再取得する。label は materialized state であり、readiness や完了の正本にしない。
+- 部分的な API failure があれば、確認できない task を ready にせず、確認できない requirement を close しない。確認できた他の Issue の処理は継続する。
+- timeout 後は Issue を再取得して更新結果を確認し、結果が不明なまま同じ label mutation、comment、close を繰り返さない。
+- active claim、assignee、open PR を見つけた task を actionable として返さない。`automation:enabled` は scheduled dispatch の opt-in gate であり、reconciliation の分類や修復では変更しない。
+- scheduled caller でも repository 単位の concurrency 制御を設定する。skill 内の再取得と有限リトライは、複数実行を安全に並列化する保証ではない。
