@@ -9,7 +9,7 @@ Watch mode は、Pull Request 作成後または task session の手動再開後
 3. skill directory を基準に helper を実行する。
 
    ```bash
-   python3 scripts/watch_pr.py --pr <number-or-url> --repo <owner/repo> --interval 30 --timeout 2700
+   node scripts/watch_pr.ts --pr <number-or-url> --repo <owner/repo> --interval 30 --timeout 2700
    ```
 
 4. 実行環境に background job、monitor、thread wakeup などの長時間 command 向け機能があれば使う。なければ foreground で待つ。待機中に model turn を繰り返さない。
