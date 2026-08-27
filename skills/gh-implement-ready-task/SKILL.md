@@ -1,6 +1,6 @@
 ---
 name: gh-implement-ready-task
-description: Implement one specified GitHub task after validating its workflow labels and native dependencies, open a pull request, hand it off to bounded review maintenance, and capture eligible out-of-scope follow-ups for human triage. Use after task creation, dependency completion, or gh-find-ready-task; do not use this skill to scan the backlog.
+description: Implement one specified GitHub task after validating its workflow labels and native dependencies, open a pull request, create a durable review handoff, and capture eligible out-of-scope follow-ups for human triage. Use after task creation, dependency completion, or gh-find-ready-task; do not use this skill to scan the backlog.
 ---
 
 # Implement Ready Task
@@ -33,8 +33,8 @@ description: Implement one specified GitHub task after validating its workflow l
 7. PR が作成されたことと task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
 8. PR と単一の `workflow:review` を確認した後、保持した follow-up 候補があれば関連する候補をまとめ、最大3件まで `gh-create-follow-up-issue` へ渡す。候補がなければ呼び出さない。follow-up の重複、setup blocker、作成失敗は現在の PR を取り消す理由にせず、結果とともに報告する。
 9. PR の最新 head SHA を再取得し、Issue comment に `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` marker と PR URL、検証概要を残す。同じ PR/head の marker が既にあれば重複させない。handoff marker と open PR を再取得して確認した後だけ、自分の implementation claim に対応する `<!-- ai-task-release:<actor-or-run-id> -->` を残し、自分で追加した assignee だけを外す。人間または既存 assignee は外さない。
-10. `gh-maintain-review-task` が利用可能で、実行環境に45分以内の bounded wait を行える時間がある場合は、同じ task/PR を指定して watch mode を開始する。長時間 command を扱えない、次の scheduled run と重なる、または呼び出し元が PR 作成で終了するよう指定した場合は watch を開始せず handoff を返す。review maintenance の失敗や timeout は完成した PR を取り消す理由にしない。
-11. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、test 結果、review handoff と watch 結果、作成または再利用した follow-up、残った懸念を返す。
+10. `gh-maintain-review-task` が利用可能で、呼び出し元が PR 作成後の継続保守を許可し、実行環境に PR maintenance driver がある場合は、[gh-maintain-review-task の maintenance-drivers reference](../gh-maintain-review-task/references/maintenance-drivers.md) に従って同じ task/PR に driver を1つだけ接続する。native PR maintenance を優先し、なければ session loop、scheduled invocation の順で選ぶ。独自 polling script は作らず、review comments、CI failure、merge conflict、停止条件を driver instructions に含める。利用可能な driver がない、既に別 driver が動いている、または呼び出し元が PR 作成で終了するよう指定した場合は新しい driver を開始せず handoff を返す。driver の開始失敗は完成した PR を取り消す理由にしない。
+11. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、test 結果、review handoff と選択した maintenance driver、作成または再利用した follow-up、残った懸念を返す。
 
 ## Failure handling
 
@@ -45,5 +45,5 @@ description: Implement one specified GitHub task after validating its workflow l
 - label 更新の直前に Issue を再取得する。既存の無関係な label と `automation:enabled` は保持し、目標 workflow label の存在と更新後の単一性を確認する。workflow skill が label を作成してはならない。
 - コード変更前に `workflow:in-progress` への更新または確認が失敗した場合は実装しない。自分が作った claim だけを安全に解除できる場合は unassign し、release marker を残す。
 - コード変更、push、または PR が存在し review handoff が完了していない段階では implementation claim と assignee を維持し、失敗箇所を報告する。PR 作成後に `workflow:review` への更新が失敗しても PR を閉じたり作り直したりせず、PR を正本として reconciliation が必要な state drift を報告する。
-- review handoff の確認後は implementation claim を release する。以後の排他は `gh-maintain-review-task` の短命な review claim が mutation cycle ごとに担う。watcher の read-only 待機を理由に implementation claim や assignee を保持し続けない。
+- review handoff の確認後は implementation claim を release する。以後の排他は `gh-maintain-review-task` の短命な review claim が mutation cycle ごとに担う。maintenance driver の待機を理由に implementation claim や assignee を保持し続けない。
 - label は進捗の materialized state であり、native dependency、assignee、claim、open PR の確認を省略する理由にしない。GitHub API の部分的な失敗を ready と解釈しない。
