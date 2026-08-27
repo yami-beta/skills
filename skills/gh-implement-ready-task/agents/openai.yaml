@@ -1,4 +1,4 @@
 interface:
   display_name: "Implement Ready Task"
-  short_description: "Implement a ready task, open a PR, and capture follow-ups"
-  default_prompt: "Use $gh-implement-ready-task to implement this ready task, open a pull request, and capture eligible follow-ups."
+  short_description: "Implement a task, open a PR, and hand off review care"
+  default_prompt: "Use $gh-implement-ready-task to implement this ready task, open a pull request, and create a durable review handoff."

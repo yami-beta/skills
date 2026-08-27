@@ -25,14 +25,19 @@ GitHub native metadata と実行状況を正本として、open な管理対象 
 各 open task について、native parent、native `blockedBy`、assignees、全 comments、task を閉じる open Pull Request、現在の labels を取得する。collection は pagination の最後まで取得し、取得件数と API の合計数が一致することを確認する。
 
 1. task が同じ repository の native sub-issue であることと、全 blocker の存在・状態を確認する。自己参照、循環、別 repository、参照不能など、事実として確認できた不正 metadata は `invalid` と分類する。
-2. 対応する release marker が後にない `<!-- ai-task-claim:<actor-or-run-id> -->` を active claim とする。claim を時間経過だけで失効させない。
-3. 次の順で目標 workflow label を決める。
+2. 対応する release marker が後にない `<!-- ai-task-claim:<actor-or-run-id> -->` を active implementation claim とする。claim を時間経過だけで失効させない。
+3. review metadata を別の実行事実として読む。
+   - open PR の番号に一致する最新の `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` を valid handoff とする。marker の head が現在の head と違う場合は stale handoff として報告するが、同じ PR の session handoff 自体は有効とする。
+   - 対応する release marker が後にない `<!-- ai-review-claim:<actor-or-run-id> -->` を active review claim とする。review claim は mutation cycle の排他であり、workflow label を `in-progress` に変える根拠にはしない。
+   - `<!-- ai-review-state:<state-hash> -->` は同じ GitHub state への重複操作を抑止する記録であり、classification の正本にはしない。
+4. 次の順で目標 workflow label を決める。
    - invalid metadata または1件以上の open blocker: `workflow:blocked`
    - blocker がなく、task を閉じる open Pull Request がある: `workflow:review`
-   - blocker がなく、assignee または active claim がある: `workflow:in-progress`
+   - blocker がなく、assignee または active implementation claim がある: `workflow:in-progress`
    - blocker がなく、上記の実行中事実もない: `workflow:ready`
-4. blocker がある task に assignee、claim、open PR が存在する場合は `workflow:blocked` を維持し、作業中に dependency が追加・再openされた競合として警告する。
-5. dependency、comments、assignees、または open PR の取得が不完全なら `unknown` とする。既存 label を変更せず、actionable として返さない。部分的な API failure を blocker なしと解釈しない。
+5. blocker がある task に assignee、claim、open PR が存在する場合は `workflow:blocked` を維持し、作業中に dependency が追加・再openされた競合として警告する。
+6. open PR があるのに同じ PR の valid handoff がない場合、workflow は `review` に修復するが review maintenance を actionable として返さず、handoff drift として警告する。stale handoff または active review claim がある場合も `review` を維持し、その状態と marker を結果へ含める。
+7. dependency、comments、assignees、open PR、または review marker の取得が不完全なら `unknown` とする。既存 label を変更せず、actionable として返さない。部分的な API failure を blocker なし、handoff 済み、または review 完了と解釈しない。
 
 既知の invalid task は `kind:task` と `workflow:blocked` に正規化し、invalid の根拠を結果へ含める。`unknown` task は安全な目標状態を確定できないため label 修復を行わない。
 
@@ -67,7 +72,7 @@ workflow skill 内で欠けた contract label を作成せず、通常 label や
 ## Results
 
 - event mode では、修復後に `workflow:ready` で native blocker がすべて closed の直接依存 task の番号と URL を返す。呼び出し元は明示的な event invocation として `gh-implement-ready-task` へ渡せる。
-- reconciliation mode では、ready、blocked、in-progress、review、invalid、unknown、concurrent-update の一覧、変更した labels、変更不要だった Issue を根拠付きで返す。候補がない場合も成功扱いにする。
+- reconciliation mode では、ready、blocked、in-progress、review、invalid、unknown、concurrent-update の一覧、変更した labels、変更不要だった Issue を根拠付きで返す。review task には handoff の有効性、active review claim、最新 state marker の有無も含める。候補がない場合も成功扱いにする。
 - close した requirement、metadata mismatch や not planned のため close しなかった requirement、API failure で確認不能だった requirement を区別して返す。
 
 ## Concurrency and failure rules
@@ -75,5 +80,5 @@ workflow skill 内で欠けた contract label を作成せず、通常 label や
 - label 更新と requirement close の直前・直後に native facts を再取得する。label は materialized state であり、readiness や完了の正本にしない。
 - 部分的な API failure があれば、確認できない task を ready にせず、確認できない requirement を close しない。確認できた他の Issue の処理は継続する。
 - timeout 後は Issue を再取得して更新結果を確認し、結果が不明なまま同じ label mutation、comment、close を繰り返さない。
-- active claim、assignee、open PR を見つけた task を actionable として返さない。`automation:enabled` は scheduled dispatch の opt-in gate であり、reconciliation の分類や修復では変更しない。
+- active implementation claim、assignee、open PR を見つけた task を ready implementation の actionable として返さない。active review claim は review maintenance の競合として報告する。`automation:enabled` は scheduled dispatch の opt-in gate であり、reconciliation の分類や修復では変更しない。
 - scheduled caller でも repository 単位の concurrency 制御を設定する。skill 内の再取得と有限リトライは、複数実行を安全に並列化する保証ではない。
