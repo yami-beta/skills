@@ -107,7 +107,7 @@ label の更新だけでは複数エージェント間の排他を保証でき�
 
 継続監視は実行環境の maintenance driver に委ねる。Codex では native の「PR を監視して修正」、Claude Code では Auto-fix PR、または session を開いたまま使える場合の `/loop` を優先する。これらが利用できなければ scheduled または manual invocation で同じ once-mode contract を呼び出す。`/goal` は完了条件へ向かう長時間作業には使えるが、一定間隔の polling driver としては扱わない。
 
-review 対応の mutation 直前だけ `<!-- ai-review-claim:<actor-or-run-id> -->` を取得し、完了または停止時に `<!-- ai-review-release:<actor-or-run-id> -->` を残す。driver の待機中は claim を保持しない。同じ head、checks、review、最新 comments、mergeability から作る `<!-- ai-review-state:<state-hash> -->` により、同一状態への rerun、comment、commit を繰り返さない。review claim は短命な排他であり、`workflow:review` を `workflow:in-progress` に変更する根拠にはしない。
+review 対応の mutation 直前だけ `<!-- ai-review-claim:<actor-or-run-id> -->` を取得し、完了または停止時に `<!-- ai-review-release:<actor-or-run-id> -->` を残す。driver の待機中は claim を保持しない。同じ head、checks、review、最新 comments、mergeability から作る `<!-- ai-review-state:<state-hash> -->` により、同一状態への rerun、comment、commit を繰り返さない。これらの review lifecycle marker は PR 側の `<!-- ai-review-marker -->` を含む comment 1件に集約し、invocation ごとに新しい comment を追加せずその comment を編集する。Issue に残すのは `gh-implement-ready-task` の handoff だけとし、review の経過で Issue のタイムラインを埋めない。review claim は短命な排他であり、`workflow:review` を `workflow:in-progress` に変更する根拠にはしない。
 
 同じPRに接続する driver は1つだけにする。native driver の custom instructions には未解決 review thread の取得も含め、自動 merge は明示的に許可しない限り無効にする。CI が green でも必須 review が pending なら監視を継続し、必要な approval を満たして未解決 feedback と conflict がない、merged/closed、曖昧な feedback、権限不足、claim conflict のいずれかで停止またはpauseする。将来の常駐 orchestrator も同じ once-mode contract を worker として呼び出せる。
 

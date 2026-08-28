@@ -22,13 +22,14 @@ GitHub native metadata と実行状況を正本として、open な管理対象 
 
 ## Task classification
 
-各 open task について、native parent、native `blockedBy`、assignees、全 comments、task を閉じる open Pull Request、現在の labels を取得する。collection は pagination の最後まで取得し、取得件数と API の合計数が一致することを確認する。
+各 open task について、native parent、native `blockedBy`、assignees、全 comments、task を閉じる open Pull Request とその top-level comments、現在の labels を取得する。collection は pagination の最後まで取得し、取得件数と API の合計数が一致することを確認する。
 
 1. task が同じ repository の native sub-issue であることと、全 blocker の存在・状態を確認する。自己参照、循環、別 repository、参照不能など、事実として確認できた不正 metadata は `invalid` と分類する。
 2. 対応する release marker が後にない `<!-- ai-task-claim:<actor-or-run-id> -->` を active implementation claim とする。claim を時間経過だけで失効させない。
 3. review metadata を別の実行事実として読む。
    - open PR の番号に一致する最新の `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` を valid handoff とする。marker の head が現在の head と違う場合は stale handoff として報告するが、同じ PR の session handoff 自体は有効とする。
-   - 対応する release marker が後にない `<!-- ai-review-claim:<actor-or-run-id> -->` を active review claim とする。review claim は mutation cycle の排他であり、workflow label を `in-progress` に変える根拠にはしない。
+   - review claim、release、state は PR 側の `<!-- ai-review-marker -->` を含む comment を正本として読む。Issue 側に残る過去の同種 marker は互換としてのみ読む。
+   - 対応する release marker がない `<!-- ai-review-claim:<actor-or-run-id> -->` を active review claim とする。review claim は mutation cycle の排他であり、workflow label を `in-progress` に変える根拠にはしない。
    - `<!-- ai-review-state:<state-hash> -->` は同じ GitHub state への重複操作を抑止する記録であり、classification の正本にはしない。
 4. 次の順で目標 workflow label を決める。
    - invalid metadata または1件以上の open blocker: `workflow:blocked`
