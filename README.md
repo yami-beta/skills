@@ -56,8 +56,7 @@ skills/
 | Skill | 役割 |
 | --- | --- |
 | [`gh-setup-issue-workflow`](skills/gh-setup-issue-workflow/SKILL.md) | workflow が使う固定 label を repository に作成・検証する |
-| [`gh-plan-requirement`](skills/gh-plan-requirement/SKILL.md) | 要件を精緻化し、調査・設計・実装計画を親 Issue に追記する |
-| [`gh-split-requirement`](skills/gh-split-requirement/SKILL.md) | 計画を依存関係付きの task sub-issue に分割する |
+| [`gh-plan-requirement`](skills/gh-plan-requirement/SKILL.md) | 要件を精緻化して調査・設計・実装計画を親 Issue に追記し、承認後に依存関係付きの task sub-issue へ分割する |
 | [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`gh-maintain-review-task`](skills/gh-maintain-review-task/SKILL.md) | 指定された task PR の review・CI を最新状態から最大1 cycle 保守する |
@@ -123,7 +122,7 @@ follow-up の作成失敗や重複は、完成した source Pull Request を取�
 
 定期実行では、最初に `gh-reconcile-issue-state` の全件整合モードを実行し、次に `gh-find-ready-task`、`gh-implement-ready-task` の順で実行します。PR 作成後の継続保守を許可していて実行環境に maintenance driver があれば、同じ task/PR に driver を1つだけ接続します。自動実装候補は `kind:task`、`workflow:ready`、`automation:enabled` をすべて持つ open Issue に限定します。
 
-イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-reconcile-issue-state` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割の2スキルは、どちらのパターンでも手動または Issue イベントから個別に実行できます。
+イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-reconcile-issue-state` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割を担う `gh-plan-requirement` は、どちらのパターンでも手動または Issue イベントから実行できます。
 
 どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
 
