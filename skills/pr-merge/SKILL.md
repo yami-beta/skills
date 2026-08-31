@@ -1,7 +1,7 @@
 ---
 name: pr-merge
 description: Pull Requestをマージする。マージ前にCIチェックとレビュー状態を確認し、リポジトリのマージ設定と履歴の慣習に応じた方法でマージする。「PRをマージ」「プルリクエストをマージ」などの要求時に使用。
-allowed-tools: Bash(gh pr merge *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh repo view *) Bash(git fetch *) Bash(git log *)
+allowed-tools: Bash(gh pr merge *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh repo view *) Bash(git fetch *) Bash(git log *) Bash(git rev-parse *) Bash(git push origin --delete *)
 argument-hint: "[pr-number-or-url]"
 ---
 
@@ -26,7 +26,7 @@ gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed
 対象 PR の状態を確認する:
 
 ```bash
-gh pr view <pr-number> --json title,url,state,mergeable,reviewDecision
+gh pr view <pr-number> --json title,url,state,mergeable,reviewDecision,headRefName
 gh pr checks <pr-number>
 ```
 
@@ -60,7 +60,15 @@ git log -20 --format='%h %p %s' origin/<base>   # %p の親が2つ以上ある�
 
 マージは取り消せない操作のため、実行前に対象 PR（タイトル・URL）とマージ方法を提示し、ユーザーの確認を得る。
 
-確認が取れたらマージを実行する:
+確認を求める前に、作業ディレクトリが linked worktree かどうかを判定する:
+
+```bash
+git rev-parse --git-dir --git-common-dir
+```
+
+2つの出力が異なれば linked worktree、同じ（どちらも `.git` 等）なら main worktree である。
+
+**main worktree の場合**、確認が取れたらマージを実行する:
 
 ```bash
 gh pr merge <pr-number> <merge-method> --delete-branch
@@ -69,6 +77,17 @@ gh pr merge <pr-number> <merge-method> --delete-branch
 - `<merge-method>` には Step 2 で決定した方法（`--merge` / `--squash` / `--rebase`）を指定する
 - pr-number が指定されていない場合は省略する（現在のブランチの PR が対象になる）
 - `--delete-branch` によりローカル・リモートのトピックブランチが削除される（対象ブランチをチェックアウトしている場合はデフォルトブランチへの切り替えも行われる）
+
+**linked worktree の場合**、`--delete-branch` は使わない（デフォルトブランチが main worktree 側でチェックアウト済みのため切り替えに失敗し、チェックアウト中のローカルブランチも削除できない）。確認が取れたら `--delete-branch` なしでマージし、リモートのトピックブランチのみ別途削除する:
+
+```bash
+gh pr merge <pr-number> <merge-method>
+git push origin --delete <head-branch>
+```
+
+- `<head-branch>` には Step 1 で取得した `headRefName` を指定する
+- リポジトリの自動削除設定などで既に削除済みの場合、`git push origin --delete` は失敗するが問題ない
+- ローカルブランチとワークツリーはチェックアウト中のため削除できない。残ることを Step 5 で報告する
 
 ### Step 4: クリーンアップ
 
@@ -80,4 +99,4 @@ git fetch --prune
 
 ### Step 5: 結果の報告
 
-マージした Pull Request のタイトルと URL、採用したマージ方法、ブランチ削除の結果を報告する。
+マージした Pull Request のタイトルと URL、採用したマージ方法、ブランチ削除の結果を報告する。linked worktree でマージした場合は、リモートブランチのみ削除しローカルブランチとワークツリーが残っていることを明記する。
