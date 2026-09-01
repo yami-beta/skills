@@ -1,4 +1,0 @@
-interface:
-  display_name: "Create Follow-up Issue"
-  short_description: "Capture out-of-scope findings as triageable GitHub issues"
-  default_prompt: "Use $gh-create-follow-up-issue to turn this out-of-scope finding into a deduplicated backlog issue."

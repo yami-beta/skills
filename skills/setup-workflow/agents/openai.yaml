@@ -1,0 +1,4 @@
+interface:
+  display_name: "Set Up GitHub Issue Workflow"
+  short_description: "Create and verify the workflow's fixed GitHub labels"
+  default_prompt: "Use $setup-workflow to set up the fixed issue workflow labels in this repository."

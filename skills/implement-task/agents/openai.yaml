@@ -1,0 +1,4 @@
+interface:
+  display_name: "Implement Ready Task"
+  short_description: "Implement a task, open a PR, and hand off review care"
+  default_prompt: "Use $implement-task to implement this ready task, open a pull request, and create a durable review handoff."
