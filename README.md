@@ -49,23 +49,23 @@ skills/
 
 ## Issue-driven development workflow
 
-人間が作成した要件 Issue、または実装中に agent が提案した follow-up Issue を起点に、以下のスキルを順に組み合わせると、要件の精緻化から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
+既存の要件 Issue、または実装中に agent が提案した follow-up Issue を起点に、以下のスキルを順に組み合わせると、要件の整理から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
 
-要件 Issue は自由形式で、背景や要望だけをカジュアルに記載して構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って目的、スコープ、要件、受入条件、未決事項を明示してから設計へ進みます。
+要件 Issue は自由形式で、初期段階では背景や要望だけの記述でも構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って目的、スコープ、要件、受入条件、未決事項を明示してから設計へ進みます。
 
 | Skill | 役割 |
 | --- | --- |
-| [`gh-setup-issue-workflow`](skills/gh-setup-issue-workflow/SKILL.md) | workflow が使う固定 label を repository に作成・検証する |
-| [`gh-plan-requirement`](skills/gh-plan-requirement/SKILL.md) | 要件を精緻化して調査・設計・実装計画を親 Issue に追記し、承認後に依存関係付きの task sub-issue へ分割する |
-| [`gh-find-ready-task`](skills/gh-find-ready-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
-| [`gh-implement-ready-task`](skills/gh-implement-ready-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
-| [`gh-maintain-review-task`](skills/gh-maintain-review-task/SKILL.md) | 指定された task PR の review・CI を最新状態から最大1 cycle 保守する |
-| [`gh-create-follow-up-issue`](skills/gh-create-follow-up-issue/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
-| [`gh-reconcile-issue-state`](skills/gh-reconcile-issue-state/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
+| [`setup-workflow`](skills/setup-workflow/SKILL.md) | workflow が使う固定 label を repository に作成・検証する |
+| [`plan-requirement`](skills/plan-requirement/SKILL.md) | 要件を整理して調査・設計・実装計画を親 Issue に追記し、承認後に依存関係付きの task sub-issue へ分割する |
+| [`pick-task`](skills/pick-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
+| [`implement-task`](skills/implement-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
+| [`maintain-pr`](skills/maintain-pr/SKILL.md) | 指定された task PR の review・CI を最新状態から最大1 cycle 保守する |
+| [`create-follow-up`](skills/create-follow-up/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
+| [`sync-issues`](skills/sync-issues/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
 
 ### Workflow metadata contract
 
-GitHub native metadata を事実の正本とし、固定 label を検索、可視化、scheduled dispatch に使う。workflow を導入する repository では、最初に `gh-setup-issue-workflow` で必要 label を準備する。
+GitHub native metadata を事実の正本とし、固定 label を検索、可視化、scheduled dispatch に使う。workflow を導入する repository では、最初に `setup-workflow` で必要 label を準備する。
 
 | Label | 意味 |
 | --- | --- |
@@ -100,29 +100,29 @@ label の更新だけでは複数エージェント間の排他を保証でき�
 
 ### Review maintenance and session handoff
 
-`gh-implement-ready-task` は Pull Request と `workflow:review` を確認した後、PR 番号と最新 head SHA を `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` marker に記録する。handoff を再取得して確認してから、自分の implementation claim を release し、自分で追加した assignee だけを外す。これにより、実装 session が終わっても Issue、PR、comments を使って review 状態を復元できる。
+`implement-task` は Pull Request と `workflow:review` を確認した後、PR 番号と最新 head SHA を `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` marker に記録する。handoff を再取得して確認してから、自分の implementation claim を release し、自分で追加した assignee だけを外す。これにより、実装 session が終わっても Issue、PR、comments を使って review 状態を復元できる。
 
-`gh-maintain-review-task` は1回の invocation ごとに GitHub の head、checks、reviews、comments、review threads、mergeability を再取得し、必要なら最大1回の mutation cycle を実行して終了する。skill 自身は待機や polling を行わないため、session や特定 agent の継続機能に依存しない。
+`maintain-pr` は1回の invocation ごとに GitHub の head、checks、reviews、comments、review threads、mergeability を再取得し、必要なら最大1回の mutation cycle を実行して終了する。skill 自身は待機や polling を行わないため、session や特定 agent の継続機能に依存しない。
 
 継続監視は実行環境の maintenance driver に委ねる。Codex では native の「PR を監視して修正」、Claude Code では Auto-fix PR、または session を開いたまま使える場合の `/loop` を優先する。これらが利用できなければ scheduled または manual invocation で同じ once-mode contract を呼び出す。`/goal` は完了条件へ向かう長時間作業には使えるが、一定間隔の polling driver としては扱わない。
 
-review 対応の mutation 直前だけ `<!-- ai-review-claim:<actor-or-run-id> -->` を取得し、完了または停止時に `<!-- ai-review-release:<actor-or-run-id> -->` を残す。driver の待機中は claim を保持しない。同じ head、checks、review、最新 comments、mergeability から作る `<!-- ai-review-state:<state-hash> -->` により、同一状態への rerun、comment、commit を繰り返さない。これらの review lifecycle marker は PR 側の `<!-- ai-review-marker -->` を含む comment 1件に集約し、invocation ごとに新しい comment を追加せずその comment を編集する。Issue に残すのは `gh-implement-ready-task` の handoff だけとし、review の経過で Issue のタイムラインを埋めない。review claim は短命な排他であり、`workflow:review` を `workflow:in-progress` に変更する根拠にはしない。
+review 対応の mutation 直前だけ `<!-- ai-review-claim:<actor-or-run-id> -->` を取得し、完了または停止時に `<!-- ai-review-release:<actor-or-run-id> -->` を残す。driver の待機中は claim を保持しない。同じ head、checks、review、最新 comments、mergeability から作る `<!-- ai-review-state:<state-hash> -->` により、同一状態への rerun、comment、commit を繰り返さない。skill 自身が更新する `<!-- ai-review-marker -->` comment は state hash の入力から除外する。これらの review lifecycle marker は PR 側の comment 1件に集約し、invocation ごとに新しい comment を追加せずその comment を編集する。Issue に残すのは `implement-task` の handoff だけとし、review の経過で Issue のタイムラインを埋めない。review claim は短命な排他であり、`workflow:review` を `workflow:in-progress` に変更する根拠にはしない。
 
 同じPRに接続する driver は1つだけにする。native driver の custom instructions には未解決 review thread の取得も含め、自動 merge は明示的に許可しない限り無効にする。CI が green でも必須 review が pending なら監視を継続し、必要な approval を満たして未解決 feedback と conflict がない、merged/closed、曖昧な feedback、権限不足、claim conflict のいずれかで停止またはpauseする。将来の常駐 orchestrator も同じ once-mode contract を worker として呼び出せる。
 
 ### Agent-created follow-up work
 
-実装または review 中に現在の task 範囲外の改善を見つけた場合、現在の変更へ混ぜず、Pull Request の作成と確認後に `gh-create-follow-up-issue` で standalone requirement を提案します。作業中は候補と根拠を保持し、最後に関連する候補をまとめて重複を検索するため、発見のたびに Issue を作成しません。
+実装または review 中に現在の task 範囲外の改善を見つけた場合、現在の変更へ混ぜず、Pull Request の作成と確認後に `create-follow-up` で standalone requirement を提案します。作業中は候補と根拠を保持し、最後に関連する候補をまとめて重複を検索するため、発見のたびに Issue を作成しません。
 
-作成する Issue は `kind:requirement`、`workflow:backlog`、`origin:agent` を持ち、source Issue/PR、確認できた根拠、期待成果、現在の task との境界、受入条件を記録します。native parent、dependency、assignee、claim、`automation:enabled` は設定しません。人間が triage し、採用する場合に `gh-plan-requirement` から通常の planning workflow を開始します。
+作成する Issue は `kind:requirement`、`workflow:backlog`、`origin:agent` を持ち、source Issue/PR、確認できた根拠、期待成果、現在の task との境界、受入条件を記録します。native parent、dependency、assignee、claim、`automation:enabled` は設定しません。人間が triage し、採用する場合に `plan-requirement` から通常の planning workflow を開始します。
 
 follow-up の作成失敗や重複は、完成した source Pull Request を取り消す理由にしません。security finding や秘密情報は公開 Issue にせず、人間へ安全な報告経路が必要なことを返します。定期的な codebase 探索による Issue 生成はこの workflow に含めず、初期運用では実装・review 中に得た具体的な発見だけを対象にします。
 
 ### Trigger patterns
 
-定期実行では、最初に `gh-reconcile-issue-state` の全件整合モードを実行し、次に `gh-find-ready-task`、`gh-implement-ready-task` の順で実行します。PR 作成後の継続保守を許可していて実行環境に maintenance driver があれば、同じ task/PR に driver を1つだけ接続します。自動実装候補は `kind:task`、`workflow:ready`、`automation:enabled` をすべて持つ open Issue に限定します。
+定期実行では、最初に `sync-issues` の全件整合モードを実行し、次に `pick-task`、`implement-task` の順で実行します。PR 作成後の継続保守を許可していて実行環境に maintenance driver があれば、同じ task/PR に driver を1つだけ接続します。自動実装候補は `kind:task`、`workflow:ready`、`automation:enabled` をすべて持つ open Issue に限定します。
 
-イベント駆動では、task 分割直後に dependency のない task を `gh-implement-ready-task` へ渡します。task Issue が close されたら `gh-reconcile-issue-state` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割を担う `gh-plan-requirement` は、どちらのパターンでも手動または Issue イベントから実行できます。
+イベント駆動では、task 分割直後に dependency のない task を `implement-task` へ渡します。task Issue が close されたら `sync-issues` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割を担う `plan-requirement` は、どちらのパターンでも手動または Issue イベントから実行できます。
 
 どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
 
@@ -130,9 +130,9 @@ follow-up の作成失敗や重複は、完成した source Pull Request を取�
 
 定期実行は常駐 daemon を前提にせず、Codex、Claude Code など利用するエージェントのスケジュール機能から、repository ごとに次の1回分の処理を起動します。
 
-1. `gh-reconcile-issue-state` を全件整合モードで実行する。
-2. 整合に成功した場合だけ `gh-find-ready-task` で task を1件選択して claim する。
-3. task を claim できた場合だけ、その Issue を指定して `gh-implement-ready-task` を実行する。
+1. `sync-issues` を全件整合モードで実行する。
+2. 整合に成功した場合だけ `pick-task` で task を1件選択して claim する。
+3. task を claim できた場合だけ、その Issue を指定して `implement-task` を実行する。
 4. Pull Request と review handoff が確認でき、継続保守を許可していて実行環境に maintenance driver がある場合だけ、同じ Issue/PR に driver を1つ接続する。driver がなければ handoff で終了する。
 
 1回の実行で扱う task は最大1件とし、repository 単位で実行が重ならないよう scheduler の concurrency を設定します。各段階が失敗した場合、metadata を確定できない場合、または claim の競合を検出した場合は、そこで停止します。後続段階を推測で続行したり、label だけを根拠に実装を開始したりしません。
@@ -141,10 +141,10 @@ Codex と Claude Code ではスケジュールを登録する UI や設定方法
 
 ```text
 In repository <owner/repo>:
-1. Use $gh-reconcile-issue-state in full reconciliation mode.
-2. Only if it succeeds, use $gh-find-ready-task.
-3. If exactly one task is claimed, use $gh-implement-ready-task for that issue.
-4. If it opens and hands off a pull request and the environment supports a PR maintenance driver, attach exactly one driver that invokes $gh-maintain-review-task once per wake-up. Otherwise return the handoff.
+1. Use $sync-issues in full reconciliation mode.
+2. Only if it succeeds, use $pick-task.
+3. If exactly one task is claimed, use $implement-task for that issue.
+4. If it opens and hands off a pull request and the environment supports a PR maintenance driver, attach exactly one driver that invokes $maintain-pr once per wake-up. Otherwise return the handoff.
 Stop on unknown metadata, a setup blocker, a failed stage, or a claim conflict.
 Process at most one task in this run.
 ```
@@ -153,13 +153,13 @@ Process at most one task in this run.
 
 旧運用の task 本文に `- Depends on: #123, #456` のような行がある repository は、次の順序で native issue dependencies へ移行します。移行中は対象 Issue から `automation:enabled` を外し、scheduled execution を停止しておきます。
 
-1. `gh-setup-issue-workflow` で固定 label を作成・検証する。
+1. `setup-workflow` で固定 label を作成・検証する。
 2. open な管理対象 task を列挙し、本文の依存宣言と想定する親 requirement を記録する。
 3. 参照先 Issue が同じ repository に存在すること、自己参照や循環がないこと、親子関係が一意であることを確認する。不明な参照は推測で補わない。
 4. native sub-issue の parent と native `blocked by` relationship を設定する。本文の依存宣言はまだ削除しない。
 5. Issue を再取得し、`parent` と pagination を含む `blockedBy` の集合が手順2の記録と完全に一致することを確認する。
 6. 完全一致した task だけ、本文から旧依存宣言と不要になった空の見出しを削除する。
-7. 本文と native metadata をもう一度取得してから `gh-reconcile-issue-state` を実行し、`workflow:ready` または `workflow:blocked` が native metadata と一致することを確認する。
+7. 本文と native metadata をもう一度取得してから `sync-issues` を実行し、`workflow:ready` または `workflow:blocked` が native metadata と一致することを確認する。
 
 native relationship の設定、再取得、または照合に失敗した task では、本文の旧依存宣言を削除せず、`automation:enabled` も付けません。その task の自動実装は停止し、確認できた事実と失敗箇所を報告します。途中まで native relationship が設定された場合も自動化は停止したままにし、再取得した実状態と移行前の記録を比較してから同じ手順を再開します。
 

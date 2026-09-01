@@ -1,0 +1,4 @@
+interface:
+  display_name: "Plan Requirement Issue"
+  short_description: "Analyze, plan, and split an existing requirement issue"
+  default_prompt: "Use $plan-requirement to analyze, plan, and split this requirement issue into task issues."

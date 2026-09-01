@@ -1,4 +1,0 @@
-interface:
-  display_name: "Maintain Review Task"
-  short_description: "Address PR feedback and CI in one safe cycle"
-  default_prompt: "Use $gh-maintain-review-task once for this task pull request without waiting or merging it."

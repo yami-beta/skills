@@ -1,4 +1,0 @@
-interface:
-  display_name: "Reconcile Issue State"
-  short_description: "Derive readiness and close completed requirements"
-  default_prompt: "Use $gh-reconcile-issue-state to evaluate tasks affected by this closed issue and close the parent requirement if all sub-issues are complete."
