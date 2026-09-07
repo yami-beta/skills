@@ -4,21 +4,34 @@
 
 ## Installation
 
-[GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。
+[GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
+
+- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `maintain-pr`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
+- **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-merge`, `pr-monitor`。
 
 ```sh
-# Codex
-gh skill install yami-beta/skills --all --agent codex --scope user
+# issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
+gh skill install yami-beta/skills setup-workflow plan-requirement pick-task \
+  implement-task maintain-pr create-follow-up sync-issues --agent claude-code
 
-# Claude Code
-gh skill install yami-beta/skills --all --agent claude-code --scope user
+# 汎用 skill を user scope へ
+gh skill install yami-beta/skills commit pr-create pr-merge pr-monitor \
+  --agent claude-code --scope user
 ```
 
-`--agent` には利用するエージェントの識別子を指定します。Cursor は `cursor`、Gemini CLI は `gemini-cli` に置き換えます。利用可能な値は `gh skill install --help` で確認できます。
+`--agent` には利用するエージェントの識別子を指定します。Codex は `codex`、Cursor は `cursor`、Gemini CLI は `gemini-cli` に置き換えます。利用可能な値は `gh skill install --help` で確認できます。
 
-更新は `gh skill update --all` で行います。リリースタグは作成していないため、既定ブランチの HEAD が常に取得されます。
+同名の skill が両 scope に存在する場合、Claude Code は user scope を優先します。project scope の版を使わせたい skill は user scope へ導入しないでください。
 
-エージェントごとのディレクトリへ配置されるのは複製であり、`gh skill update` で上書きされます。skill を変更するときはこのリポジトリを編集してください。
+### Updating
+
+更新は `gh skill update --all` で行います。リリースタグは作成していないため、既定ブランチの HEAD が常に取得されます。scope ごとに導入した skill は、その scope の位置（project scope なら対象リポジトリ内）で更新します。
+
+エージェントごとのディレクトリへ配置されるのは複製であり、`gh skill update` で上書きされます。skill を変更するときはこのリポジトリを編集してください。frontmatter の `metadata.github-*` は install 時に注入されるものであり、このリポジトリ側の `SKILL.md` には持たせません。
+
+`gh skill update` は skill の改名・削除を追随しません。旧パスを指す installed copy を残したまま "All skills are up to date." と報告します。改名・削除したときは `--force` 付きの install で導入し直し、旧ディレクトリを手動で削除してください（`gh skill` に uninstall subcommand はありません）。
+
+このリポジトリ自身の中で `gh skill update --all` や `gh skill list` を実行すると、`skills/*` が project scope の published skill として列挙され、`<name> has no GitHub metadata` という warning が出ます。正本に `metadata.github-*` を持たせない運用どおりの状態であり、installed copy の更新漏れとは別です。
 
 ## Repository structure
 
@@ -35,6 +48,8 @@ skills/
 `SKILL.md` の `name` は親ディレクトリ名と一致させ、64文字以内の lowercase kebab-case にします。`description` には skill の機能と発火条件の両方を記載します。`agents/` は Agent Skills specification が許容する追加ディレクトリであり、skill の移植性に必要な情報は `SKILL.md` と標準リソース内に保持します。
 
 `allowed-tools` は Agent Skills specification に従う space-separated string とし、権限付与が実装されていないエージェントでも skill 本体が動作するよう、処理の前提にはしません。`argument-hint` は Claude Code と GitHub Copilot の入力 UI 向け拡張として文字列で記述し、Codex ではこの補助情報の動作を前提にしません。仕様外キーを拒否する厳格な配布経路には、そのままでは使用できない点に注意してください。
+
+skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` など外部の設定に依存する記述を置きません。skill の動作に必要な前提は `SKILL.md` と標準リソースの中に書きます。
 
 ## Git/GitHub workflow
 
@@ -188,3 +203,7 @@ gh skill publish --dry-run
 最初の2つの検索は旧 workflow 方針が残っていないことを確認し、結果が0件になることを期待します。3つ目の検索結果はこの移行手順内の例示だけであることを確認します。
 
 skill 名とディレクトリ名の一致、必須 frontmatter（`name` / `description`）、`allowed-tools` が文字列であること、install metadata（`metadata.github-*`）が混入していないことなどを検査します。`license` 未指定の warning は、リポジトリルートの `LICENSE` を正とするため許容します。
+
+## Contributing
+
+このリポジトリへの変更は topic branch から Pull Request を作成し、merge commit で `main` へ統合します。`main` への直接 commit は行いません。
