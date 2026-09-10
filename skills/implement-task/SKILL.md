@@ -20,19 +20,27 @@ repository の workflow 更新は呼び出し元で直列実行する。自動�
 7. 他者の担当があれば停止する。自分が担当していても、呼び出し元または利用者が同じ作業の再開と確認できなければ引き継がない。未担当なら自分を assign し、`workflow:in-progress` に更新する。assign できなければ実装しない。
 8. 更新後に task の全 dependency、単一の `kind:task` と `workflow:in-progress`、自分だけが担当していること、既存 PR がないことを再確認する。定期実行では `automation:enabled` も再確認し、不明または競合があればコードを変更しない。
 
+## Attribution
+
+- 作成前に、利用者の指示と実行環境で適用される attribution 設定・規約を確認する。明示的に無効化されている場合は付けない。
+- 有効な場合は設定された表記を使う。エージェント名、モデル名、メールアドレスを推測せず、過去の別エージェントの署名を流用しない。必要な表記を確認できない場合は不足を報告し、付与済みとは扱わない。
+- 実行環境が自動付与する場合も含め、同じ attribution を重複させない。既存の他の contributor の表記を保持する。
+
+コミット作成には利用可能なら `commit`、PR 作成には `pr-create` の attribution 規則を適用する。これらの skill がなくても、コミットには適用される `Co-authored-by` trailer または設定された表記、PR 本文には生成元表記を含め、作成後にそれぞれ実際の本文を取得して確認する。Git の author / committer は変更しない。欠落の修正でコミットを amend するには明示的な許可が必要となる。PR 本文の補完は他の記述を保持して行う。この規則の適用は、PR 作成後の継続監視を開始する指示ではない。
+
 ## Implementation
 
 1. 現在の worktree と未保存変更を確認し、ユーザーの変更を保持する。repository 規約に従う task 専用 branch または worktree を使う。
 2. Issue の成果と受入条件に必要な最小変更を実装する。スコープ外の refactor を混ぜない。
 3. repository の既存 test pattern に沿って test を追加または更新する。関連する test、lint、typecheck、build を実行し、結果を記録する。
 4. diff を自己レビューし、受入条件、互換性、エラー処理、セキュリティ、migration を確認する。現在の task 範囲外にある独立した改善を見つけた場合は変更へ混ぜず、根拠とともに follow-up 候補として保持する。
-5. task を表す commit を作り、branch を push する。失敗時に同名 branch が存在するなら内容と所有者を確認し、上書きしない。
+5. attribution を含む task の commit を作り、実際のコミット本文で設定どおりの付与を確認してから branch を push する。明示的に無効な場合は付与不要とする。失敗時に同名 branch が存在するなら内容と所有者を確認し、上書きしない。
 6. Pull Request を作る。本文には次を含める。
    - 変更概要と設計判断
    - 検証結果
    - リスクまたは未検証事項
    - 同じ repository の task を merge 時に閉じる `Closes #<task-number>`
-7. PR が作成されたことと task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
+7. PR が作成されたこと、本文の attribution が設定どおりであること、task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
 8. PR と単一の `workflow:review` を確認した後、保持した follow-up 候補があれば関連する候補をまとめ、最大3件まで `create-follow-up` へ渡す。候補がなければ呼び出さない。follow-up の重複、setup blocker、作成失敗は現在の PR を取り消す理由にせず、結果とともに報告する。
 9. PR 本文の変更概要・検証結果と task を閉じる関係を引き継ぎ情報とする。追加の管理コメントは作らない。担当者は PR 対応中も保持する。
 10. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、検証結果、follow-up、残った懸念を返して終了する。レビュー監視、CI の継続修正、merge は開始しない。PR 作成後の対応は利用者が必要に応じて別途依頼する。
