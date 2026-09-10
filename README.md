@@ -6,13 +6,13 @@
 
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
-- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `maintain-pr`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
+- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
 - **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-merge`, `pr-monitor`。
 
 ```sh
 # issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
 gh skill install yami-beta/skills setup-workflow plan-requirement pick-task \
-  implement-task maintain-pr create-follow-up sync-issues --agent claude-code
+  implement-task create-follow-up sync-issues --agent claude-code
 
 # 汎用 skill を user scope へ
 gh skill install yami-beta/skills commit pr-create pr-merge pr-monitor \
@@ -74,7 +74,6 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 | [`plan-requirement`](skills/plan-requirement/SKILL.md) | 要件を整理して調査・設計・実装計画を親 Issue に追記し、承認後に依存関係付きの task sub-issue へ分割する |
 | [`pick-task`](skills/pick-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`implement-task`](skills/implement-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
-| [`maintain-pr`](skills/maintain-pr/SKILL.md) | 指定された task PR の review・CI を最新状態から最大1 cycle 保守する |
 | [`create-follow-up`](skills/create-follow-up/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
 | [`sync-issues`](skills/sync-issues/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
 
@@ -95,13 +94,13 @@ GitHub native metadata を事実の正本とし、固定 label を検索、可�
 | `automation:enabled` | scheduled agent がこの Issue を処理してよいという opt-in gate |
 | `origin:agent` | agent が発見し、人間の triage 待ちとして作成した follow-up Issue |
 
-open な workflow 管理対象 Issue は `kind:*` と `workflow:*` をそれぞれ1つだけ持つ。`automation:enabled` は workflow state とは独立して付け外しする。priority label は作らず、repository の規約、milestone due date、親 Issue 内の task 順、Issue 番号から dispatch 時に決める。
+open な workflow 管理対象 Issue は `kind:*` と `workflow:*` をそれぞれ1つだけ持つ。`automation:enabled` は workflow state とは独立して付け外しする。priority label は作らず、repository の規約、milestone due date、Issue 番号から dispatch 時に決める。
 
 状態の事実が矛盾する場合は、次の優先順位で扱う。
 
 1. Issue の open / closed を完了状態の正本にする。`workflow:done` は作らず、closed Issue の workflow label は判定に使わない。
 2. requirement と task の階層は native sub-issue、task の prerequisite は native issue dependency を正本にする。
-3. assignee、active claim、task を閉じる open Pull Request を実行中状態の根拠にする。
+3. assignee、task を閉じる open Pull Request を実行中状態の根拠にする。
 4. `workflow:*` は上記の事実を検索・表示しやすくした materialized state とし、reconciliation で欠落・重複・矛盾を修復する。
 
 基本遷移は次のとおり。
@@ -111,58 +110,48 @@ requirement: backlog -> in-progress -> needs-input | ready -> in-progress -> clo
 task:        blocked | ready -> in-progress -> review -> closed
 ```
 
-label の更新だけでは複数エージェント間の排他を保証できない。対応する release marker がない `<!-- ai-task-claim:<actor-or-run-id> -->` を active implementation claim とし、claim 後に Issue を再取得して assignee、別 claim、open Pull Request を再確認する。
+担当者と label は GitHub の画面で作業状況を確認するために使います。同時実行は呼び出し元で防ぎ、同じ repository の定期実行・イベント・手動実行を直列にします。自動実行は共通の排他枠を使い、これを保証できない環境では手動で1件ずつ実行します。同じ GitHub アカウントを使う別 session も同時に動かしません。`sync-issues` → `pick-task` → `implement-task` は1回の連続した実行として扱い、途中で別の実行を割り込ませません。
 
-### Review maintenance and session handoff
+担当設定に失敗したら実装を始めません。中断時は担当を保持し、担当者が再開するか、変更内容を確認して明示的に担当を解除します。同じアカウントが担当しているという理由だけで、別 session の作業を引き継ぎません。
 
-`implement-task` は Pull Request と `workflow:review` を確認した後、PR 番号と最新 head SHA を `<!-- ai-review-handoff:<pr-number>:<head-sha> -->` marker に記録する。handoff を再取得して確認してから、自分の implementation claim を release し、自分で追加した assignee だけを外す。これにより、実装 session が終わっても Issue、PR、comments を使って review 状態を復元できる。
+### Pull Request 作成後
 
-`maintain-pr` は1回の invocation ごとに GitHub の head、checks、reviews、comments、review threads、mergeability を再取得し、必要なら最大1回の mutation cycle を実行して終了する。skill 自身は待機や polling を行わないため、session や特定 agent の継続機能に依存しない。
+`implement-task` は task を閉じる PR を作り、変更概要・検証結果を PR 本文に記録して終了します。`workflow:review` は PR 作成済みの表示です。担当者は PR 対応中も保持します。
 
-継続監視は実行環境の maintenance driver に委ねる。Codex では native の「PR を監視して修正」、Claude Code では Auto-fix PR、または session を開いたまま使える場合の `/loop` を優先する。これらが利用できなければ scheduled または manual invocation で同じ once-mode contract を呼び出す。`/goal` は完了条件へ向かう長時間作業には使えるが、一定間隔の polling driver としては扱わない。
+レビュー、CI 失敗への修正、マージは人間が確認し、必要に応じてエージェントへ依頼します。PR の継続監視や自動修正は開始しません。マージで task が閉じた後、`sync-issues` が後続 task の着手可否を更新します。親要件は設計の「分割」と全 sub-issue の対応を確認し、作成漏れがなく全件 completed の場合だけ閉じます。
 
-review 対応の mutation 直前だけ `<!-- ai-review-claim:<actor-or-run-id> -->` を取得し、完了または停止時に `<!-- ai-review-release:<actor-or-run-id> -->` を残す。driver の待機中は claim を保持しない。同じ head、checks、review、最新 comments、mergeability から作る `<!-- ai-review-state:<state-hash> -->` により、同一状態への rerun、comment、commit を繰り返さない。skill 自身が更新する `<!-- ai-review-marker -->` comment は state hash の入力から除外する。これらの review lifecycle marker は PR 側の comment 1件に集約し、invocation ごとに新しい comment を追加せずその comment を編集する。Issue に残すのは `implement-task` の handoff だけとし、review の経過で Issue のタイムラインを埋めない。review claim は短命な排他であり、`workflow:review` を `workflow:in-progress` に変更する根拠にはしない。
-
-同じPRに接続する driver は1つだけにする。native driver の custom instructions には未解決 review thread の取得も含め、自動 merge は明示的に許可しない限り無効にする。CI が green でも必須 review が pending なら監視を継続し、必要な approval を満たして未解決 feedback と conflict がない、merged/closed、曖昧な feedback、権限不足、claim conflict のいずれかで停止またはpauseする。将来の常駐 orchestrator も同じ once-mode contract を worker として呼び出せる。
+設計は通常の `## 設計` 見出しで記録します。子タスク一覧と依存関係は GitHub の sub-issue・dependency に任せ、本文へ別の索引を作りません。follow-up の重複は問題箇所、期待する成果、関連 Issue/PR から確認します。
 
 ### Agent-created follow-up work
 
 実装または review 中に現在の task 範囲外の改善を見つけた場合、現在の変更へ混ぜず、Pull Request の作成と確認後に `create-follow-up` で standalone requirement を提案します。作業中は候補と根拠を保持し、最後に関連する候補をまとめて重複を検索するため、発見のたびに Issue を作成しません。
 
-作成する Issue は `kind:requirement`、`workflow:backlog`、`origin:agent` を持ち、source Issue/PR、確認できた根拠、期待成果、現在の task との境界、受入条件を記録します。native parent、dependency、assignee、claim、`automation:enabled` は設定しません。人間が triage し、採用する場合に `plan-requirement` から通常の planning workflow を開始します。
+作成する Issue は `kind:requirement`、`workflow:backlog`、`origin:agent` を持ち、source Issue/PR、確認できた根拠、期待成果、現在の task との境界、受入条件を記録します。native parent、dependency、assignee、`automation:enabled` は設定しません。人間が triage し、採用する場合に `plan-requirement` から通常の planning workflow を開始します。
 
 follow-up の作成失敗や重複は、完成した source Pull Request を取り消す理由にしません。security finding や秘密情報は公開 Issue にせず、人間へ安全な報告経路が必要なことを返します。定期的な codebase 探索による Issue 生成はこの workflow に含めず、初期運用では実装・review 中に得た具体的な発見だけを対象にします。
 
 ### Trigger patterns
 
-定期実行では、最初に `sync-issues` の全件整合モードを実行し、次に `pick-task`、`implement-task` の順で実行します。PR 作成後の継続保守を許可していて実行環境に maintenance driver があれば、同じ task/PR に driver を1つだけ接続します。自動実装候補は `kind:task`、`workflow:ready`、`automation:enabled` をすべて持つ open Issue に限定します。
+定期実行では `sync-issues` → `pick-task` → `implement-task` の順に実行し、最大1件の task を扱います。候補は `kind:task`、`workflow:ready`、`automation:enabled` を持つ open Issue に限定します。
 
-イベント駆動では、task 分割直後に dependency のない task を `implement-task` へ渡します。task Issue が close されたら `sync-issues` の event mode で直接依存する後続 task を再評価し、返された actionable task を実装処理へ渡します。同じ実行で親要件の完了も判定し、全 sub-issue が完了していれば要件 Issue を close します。設計・分割を担う `plan-requirement` は、どちらのパターンでも手動または Issue イベントから実行できます。
-
-どちらの方式でも、呼び出し側で repository 単位の concurrency 制御を設定し、claim 後に task を再取得して二重着手を防ぎます。
+イベント駆動では、承認済みの task 分割後に依存のない task を `implement-task` に渡します。task が閉じたら `sync-issues` の event mode で後続 task と親要件を再評価します。どちらも repository の共通の排他枠で直列実行します。
 
 ### Scheduled execution
 
-定期実行は常駐 daemon を前提にせず、Codex、Claude Code など利用するエージェントのスケジュール機能から、repository ごとに次の1回分の処理を起動します。
-
-1. `sync-issues` を全件整合モードで実行する。
-2. 整合に成功した場合だけ `pick-task` で task を1件選択して claim する。
-3. task を claim できた場合だけ、その Issue を指定して `implement-task` を実行する。
-4. Pull Request と review handoff が確認でき、継続保守を許可していて実行環境に maintenance driver がある場合だけ、同じ Issue/PR に driver を1つ接続する。driver がなければ handoff で終了する。
-
-1回の実行で扱う task は最大1件とし、repository 単位で実行が重ならないよう scheduler の concurrency を設定します。各段階が失敗した場合、metadata を確定できない場合、または claim の競合を検出した場合は、そこで停止します。後続段階を推測で続行したり、label だけを根拠に実装を開始したりしません。
-
-Codex と Claude Code ではスケジュールを登録する UI や設定方法だけが異なります。どのエージェントでも、前節の Installation に従って同じ skill を導入し、次のような共通 prompt を使用できます。実際の schedule 作成は利用するエージェント側で行います。
+利用するエージェントのスケジュール機能から、repository ごとに次の1回分の処理を起動します。既存実行をキャンセルして新しい実行で置き換えず、先の実行が終了するまで待つか、その回をスキップします。
 
 ```text
-In repository <owner/repo>:
+In repository <owner/repo>, run the following under one repository-wide concurrency slot:
 1. Use $sync-issues in full reconciliation mode.
 2. Only if it succeeds, use $pick-task.
-3. If exactly one task is claimed, use $implement-task for that issue.
-4. If it opens and hands off a pull request and the environment supports a PR maintenance driver, attach exactly one driver that invokes $maintain-pr once per wake-up. Otherwise return the handoff.
-Stop on unknown metadata, a setup blocker, a failed stage, or a claim conflict.
+3. If exactly one task is assigned for this run, use $implement-task for that issue.
+4. Return the pull request URL and verification results, then stop.
+Do not start review monitoring, automatic PR fixes, or merging.
+Stop on unknown metadata, a setup blocker, a failed stage, or a conflicting execution.
 Process at most one task in this run.
 ```
+
+PR の作成結果が不明なら既存 PR を再検索し、重複作成しません。metadata が確認不能なときは後続段階へ進みません。
 
 ### Migration from body dependency declarations
 
@@ -184,10 +173,10 @@ native relationship の設定、再取得、または照合に失敗した task 
 
 1. 全管理対象 Issue の native metadata と workflow label を reconciliation で検証する。
 2. native prerequisite をすべて満たした少数の ready task にだけ `automation:enabled` を付ける。
-3. 共通 prompt を手動で1回実行し、reconciliation、claim、Pull Request、Issue close 後の後続 task 解放を確認する。
+3. 共通 prompt を手動で1回実行し、reconciliation、担当設定、Pull Request、Issue close 後の後続 task 解放を確認する。
 4. 問題がなければ、対象 requirement または task 群を段階的に増やす。
 
-緊急停止するときは schedule を無効化し、未着手の対象 Issue から `automation:enabled` を外します。native sub-issue と issue dependency は手動運用にも必要な事実なので削除しません。進行中の claim や Pull Request は自動的に取り消さず、担当者が完了させるか、claim 所有者が release marker を残して明示的に解放します。修正後は reconciliation と少数 task での手動実行から再開します。rollback は自動実装の停止を意味し、検証済み native metadata を旧本文形式へ戻す操作ではありません。
+緊急停止するときは schedule を無効化し、未着手の対象 Issue から `automation:enabled` を外します。親子関係と依存関係は保持します。進行中の作業や PR は取り消さず、担当者が完了させるか、途中変更を確認して明示的に担当を解除します。再開時は `sync-issues` と少数 task での手動実行から確認します。
 
 ## Validation
 

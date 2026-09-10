@@ -1,6 +1,6 @@
 ---
 name: pick-task
-description: Find, verify, and claim one automation-enabled GitHub task whose workflow label is ready and whose native dependencies are closed. Use for scheduled or polling dispatch; do not use when a specific task was supplied by an event or user.
+description: Find, verify, and assign one automation-enabled GitHub task whose workflow label is ready and whose native dependencies are closed. Use for scheduled or polling dispatch; do not use when a specific task was supplied by an event or user.
 ---
 
 # Find Ready Task
@@ -9,28 +9,12 @@ description: Find, verify, and claim one automation-enabled GitHub task whose wo
 
 ## Workflow
 
-1. 対象 repository を特定し、`kind:task`、`workflow:ready`、`workflow:in-progress`、`automation:enabled` の固定 label が存在することを確認する。欠けていれば候補を探さず、`setup-workflow` が必要な setup blocker として返す。類似名の label を作らない。
-   - 呼び出し側が同じ actor/run で以前に確保した Issue を保持している場合は通常の候補検索より先に再取得する。自分の active claim、単一の `workflow:in-progress`、closed な native blocker、競合なしを確認できれば同じ Issue を返し、新しい task を確保しない。
-2. 3つの label をすべて持つ open Issue を検索する。親が明示された場合は、その native sub-issue だけに絞る。
-3. 各候補を再取得し、labels、native parent、native `blocked by`、assignees、comments、task を閉じる Pull Request を確認する。次の候補を除外し、理由を報告する。
-   - `kind:*` または `workflow:*` が欠落・複数・矛盾している、3つの必須 label のいずれかがなくなった、または native task parent を確認できない。
-   - native blocker が1件でも open、参照不能、または取得結果が不完全である。pagination を最後まで取得し、取得件数と API が返す合計数が一致することを確認する。本文の dependency 表現へ fallback しない。
-   - assignee がいる、未解除の claim marker がある、または別の実行主体が確保している。
-   - task を close する open Pull Request が既にある。
-4. 残った候補を repository の priority 規約で並べる。規約がなければ milestone due date、親の `ai-task-index` の順序、Issue 番号の昇順で決める。priority label や推測した事業優先度で並べない。
-5. 先頭候補を claim する。
-   - automation actor へ assign できる構成なら assign する。
-   - `<!-- ai-task-claim:<actor-or-run-id> -->` を含む短いコメントを1つ追加する。
-6. claim 後、Issue を再取得してまだ `workflow:ready` であり、native blocker がすべて closed で、他の担当者、別 claim、または既存 PR がないことを確認する。続いて `workflow:ready` だけを `workflow:in-progress` に置き換える。
-7. Issue をもう一度取得し、`kind:task`、`workflow:in-progress`、`automation:enabled`、native blocker、自分以外の assignee、別 claim、open PR を再検証する。競合した場合は自分の claim だけを解除し、その候補を返さず次候補を試す。
-8. 確保した Issue の番号、URL、native dependency、選択理由を返す。候補がない場合は成功扱いで `no actionable task` を返す。
+1. 呼び出し元で repository の workflow 更新を直列実行する。定期実行・イベント・手動実行で同じ排他枠を使う。同じ GitHub アカウントでも別 session は同時実行しない。直列化を確認できない自動実行では選択・更新しない。手動実行も他の実行を停止してから行う。
+2. `kind:task`、`workflow:ready`、`workflow:in-progress`、`automation:enabled` が存在することを確認する。欠けていれば `setup-workflow` が必要なことを返す。
+3. `kind:task`、`workflow:ready`、`automation:enabled` を持つ open Issue を検索する。親が指定されていればその sub-issue に絞る。
+4. 候補の親、全 dependency、assignee、task を閉じる open PR、label を再取得する。親が不正、dependency が open または確認不能、担当者あり、既存 PR あり、必須 label が欠落・複数、または dependency に自己参照・循環・別 repository への参照があれば除外する。dependency は全ページを取得し、本文を代用しない。
+5. repository の優先順位規約に従う。規約がなければ milestone due date、Issue 番号の昇順で選ぶ。
+6. 1件だけ実行者に assign し、`workflow:ready` を `workflow:in-progress` にする。assign できなければ dispatch しない。無関係な label と `automation:enabled` は保持する。
+7. 更新後に親、全 dependency、既存 PR がないこと、`automation:enabled` と単一の `kind:task` を再確認し、自分だけが担当する単一の `workflow:in-progress` であることを確認して Issue URL と選択理由を返す。失敗時は dispatch しない。コード変更前で自分が追加した担当だけを安全に外せる場合は外し、`sync-issues` で状態を再計算する。
 
-## Safety and idempotency
-
-- 一度の実行で確保する task は1件だけにする。ただし呼び出し側が明示した上限があり、並列 worker ごとの一意な claim が保証される場合を除く。
-- 同じ actor/run の marker が既にあれば同じ Issue を返し、新しい claim を作らない。
-- claim marker と同じ actor/run の release marker が後にあれば、その claim は解除済みとして扱う。対応する release がない claim を勝手に失効または横取りしない。
-- workflow label を更新する直前に現在の labels を取得する。既存の無関係な label と `automation:enabled` は保持し、現在の `workflow:*` だけを除去して目標 label を1つ追加し、更新後に再取得して確認する。
-- `workflow:in-progress` が存在しない、label 更新に失敗した、または更新後の単一性を確認できない場合は task を dispatch しない。コード変更がなく自分の claim だと確認できるときだけ自分を unassign し、`<!-- ai-task-release:<actor-or-run-id> -->` comment で claim を解除する。
-- GitHub Actions などの呼び出し側でも repository 単位の concurrency 制御を設定する。
-- label だけで readiness や排他を判断しない。native dependency、assignee、claim、open Pull Request を更新前後に確認し、GitHub API の部分的な失敗を ready と解釈しない。
+候補がなければ `no actionable task` として正常終了する。再開する対象が呼び出し元から明示されている場合は、その Issue の担当と実行状況を確認して再利用し、新しい task を選ばない。同じアカウントの担当というだけで別 session の作業を再開しない。中断した task は自動的に担当解除せず、担当者が再開または明示的に解放する。
