@@ -1,4 +1,3 @@
-<!-- ai-follow-up:<fingerprint> -->
 
 ## 概要
 
