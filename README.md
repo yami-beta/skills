@@ -66,7 +66,7 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 
 既存の要件 Issue、または実装中に agent が提案した follow-up Issue を起点に、以下のスキルを順に組み合わせると、要件の整理から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
 
-要件 Issue は自由形式で、初期段階では背景や要望だけの記述でも構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って、利用者視点の課題と解決、後から変えにくい決定事項、task への分割を親 Issue に追記します。受入条件と検証方法は分割後の task Issue が持ちます。
+要件 Issue は自由形式で、初期段階では背景や要望だけの記述でも構いません。Agent は元の記述を保持し、コメントや codebase の調査結果を使って、利用者視点の課題と解決、実装に必要な合意と判断、task への分割を親 Issue に追記します。受入条件と検証方法は分割後の task Issue が持ちます。
 
 | Skill | 役割 |
 | --- | --- |
@@ -76,6 +76,12 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 | [`implement-task`](skills/implement-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`create-follow-up`](skills/create-follow-up/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
 | [`sync-issues`](skills/sync-issues/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
+
+### Skill design
+
+開発 workflow の skill はモデルを問わず使えるよう、成果物・完了条件・判断の境界を定義します。調査や実装の順序、質問の数・書式は task に応じてエージェントが選びます。`plan-requirement` は理解の共有、合意の記録、承認後の task 化を担い、`sync-issues` は状態判定と更新条件を定義します。
+
+設計には別セッションへ引き継ぐべき挙動・制約・判断を残し、task の受入条件には新たな成果と維持すべき性質を含められます。検証は変更に応じて選び、repository の必須チェックを守ります。GitHub の依存確認、排他、重複防止、automation の opt-in は引き続き必要です。
 
 ### Workflow metadata contract
 

@@ -1,6 +1,6 @@
 ---
 name: implement-task
-description: Implement one specified GitHub task after validating its workflow labels and native dependencies, open a pull request, record the implementation summary in the PR, and capture eligible out-of-scope follow-ups for human triage. Use after task creation, dependency completion, or pick-task; do not use this skill to scan the backlog.
+description: Implement a specified ready GitHub task through a verified pull request. Use for a task supplied by the user, an event, or pick-task; do not scan the backlog.
 ---
 
 # Implement Ready Task
@@ -28,22 +28,21 @@ repository の workflow 更新は呼び出し元で直列実行する。自動�
 
 コミット作成には利用可能なら `commit`、PR 作成には `pr-create` の attribution 規則を適用する。これらの skill がなくても、コミットには適用される `Co-authored-by` trailer または設定された表記、PR 本文には生成元表記を含め、作成後にそれぞれ実際の本文を取得して確認する。Git の author / committer は変更しない。欠落の修正でコミットを amend するには明示的な許可が必要となる。PR 本文の補完は他の記述を保持して行う。この規則の適用は、PR 作成後の継続監視を開始する指示ではない。
 
-## Implementation
+## Implementation and completion
 
-1. 現在の worktree と未保存変更を確認し、ユーザーの変更を保持する。repository 規約に従う task 専用 branch または worktree を使う。
-2. Issue の成果と受入条件に必要な最小変更を実装する。スコープ外の refactor を混ぜない。
-3. repository の既存 test pattern に沿って test を追加または更新する。関連する test、lint、typecheck、build を実行し、結果を記録する。
-4. diff を自己レビューし、受入条件、互換性、エラー処理、セキュリティ、migration を確認する。現在の task 範囲外にある独立した改善を見つけた場合は変更へ混ぜず、根拠とともに follow-up 候補として保持する。
-5. attribution を含む task の commit を作り、実際のコミット本文で設定どおりの付与を確認してから branch を push する。明示的に無効な場合は付与不要とする。失敗時に同名 branch が存在するなら内容と所有者を確認し、上書きしない。
-6. Pull Request を作る。本文には次を含める。
-   - 変更概要と設計判断
-   - 検証結果
-   - リスクまたは未検証事項
-   - 同じ repository の task を merge 時に閉じる `Closes #<task-number>`
-7. PR が作成されたこと、本文の attribution が設定どおりであること、task を閉じる関係を再取得して確認してから、現在の `workflow:*` だけを `workflow:review` に置き換える。Issue は merge 前に close しない。
-8. PR と単一の `workflow:review` を確認した後、保持した follow-up 候補があれば関連する候補をまとめ、最大3件まで `create-follow-up` へ渡す。候補がなければ呼び出さない。follow-up の重複、setup blocker、作成失敗は現在の PR を取り消す理由にせず、結果とともに報告する。
-9. PR 本文の変更概要・検証結果と task を閉じる関係を引き継ぎ情報とする。追加の管理コメントは作らない。担当者は PR 対応中も保持する。
-10. Issue を再取得して単一の `workflow:review` と open PR を確認し、PR URL、変更概要、検証結果、follow-up、残った懸念を返して終了する。レビュー監視、CI の継続修正、merge は開始しない。PR 作成後の対応は利用者が必要に応じて別途依頼する。
+task 専用 branch または worktree で、Issue の成果と受入条件を満たす変更を実装する。ユーザーの既存変更を保持し、repository 規約に従う。実装順序や調査方法は task に応じて選び、範囲外の refactor は混ぜない。
+
+変更と受入条件に応じて test の追加・更新、lint、typecheck、build、手動確認を選ぶ。repository の必須チェックは実施する。diff をレビューし、今回の変更による失敗は修正して関連チェックを再実行する。外部要因や利用者の判断が必要で進められない場合は blocker と未検証事項を報告する。
+
+完了には、以下が必要となる。
+
+- task の変更を commit・push し、適用される attribution を実際のコミット本文で確認する。既存の同名 branch を上書きしない。
+- PR 本文に変更概要、必要な設計判断、検証結果、リスク・未検証事項、同じ repository の task を閉じる `Closes #<task-number>` を記載する。
+- 作成した PR を再取得して attribution と close 対象を確認し、task を単一の `workflow:review` に整合する。Issue は merge 前に閉じず、担当者を保持する。
+
+範囲外の独立した改善は根拠とともに保持し、PR と task の状態を確認した後、関連候補をまとめて最大3件まで `create-follow-up` へ渡す。候補なしなら呼び出さず、重複・作成失敗でも完成した PR を取り消さない。
+
+PR 本文を引き継ぎ情報とし、追加の管理コメントは作らない。PR URL、変更概要、検証結果、follow-up、残った懸念を返して終了する。レビュー監視、CI の継続修正、merge は別途依頼された場合に扱う。
 
 ## Failure handling
 

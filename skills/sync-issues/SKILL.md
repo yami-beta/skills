@@ -1,74 +1,61 @@
 ---
 name: sync-issues
-description: Recompute and repair GitHub issue kind and workflow labels from native relationships, assignments and closing pull requests, and close completed requirements. Use after a task closes or on a schedule to reconcile a managed issue backlog.
+description: Reconcile managed GitHub issue states and close completed requirements. Use after a task closes or to reconcile the managed backlog.
 ---
 
 # Reconcile Issue State
 
-GitHub native metadata と実行状況を正本として、open な管理対象 Issue の `kind:*` と `workflow:*` を再計算・修復する。全 native sub-issue が完了した requirement は条件を再確認して close する。
+GitHub 上の事実から管理対象 Issue の `kind:*` と `workflow:*` を整合し、完了した親要件を閉じる。取得順序や処理のまとめ方は対象に応じて選び、以下の判定規則と更新条件を守る。
 
-## Preconditions and scope
+## Scope and prerequisites
 
-1. 対象 repository を特定し、workflow metadata contract の全固定 label が存在することを確認する。欠けていれば label を暗黙に作成せず、`setup-workflow` が必要な setup blocker として、Issue を変更せず停止する。
-2. 管理対象は `kind:*` / `workflow:*` label を持つ open Issue と、その親・sub-issue から探す。native parent があれば task、parent がなく sub-issue があれば requirement とする。階層から判定できない場合は単一の `kind:*` を使う。矛盾や分類不能は `unknown` として変更しない。native parent のない `kind:task` は invalid とする。
-3. closed Issue は完了の正本とし、workflow label を再計算しない。closed task は requirement 完了判定の事実としてのみ読む。
+- **Event**: closed になった source task が指定された場合、その native `blocking` にある open task と native parent requirement が対象。PR merge だけでは完了とせず、Issue が実際に closed であることを確認する。
+- **Reconciliation**: source がない場合、`kind:*` / `workflow:*` を持つ全 open Issue と、その親・sub-issue が対象。親のない `kind:task` も含める。
 
-## Select a mode
+対象 repository に全固定 label（`kind:requirement`、`kind:task`、`workflow:backlog`、`workflow:needs-input`、`workflow:ready`、`workflow:blocked`、`workflow:in-progress`、`workflow:review`、`automation:enabled`、`origin:agent`）が必要。欠落時は Issue を変更せず `setup-workflow` が必要なことを返す。呼び出し元が repository 単位で定期・イベント・手動実行を直列化する。排他を確認できない自動実行は更新せず、手動実行も他の実行と重ねない。
 
-- **Event mode**: closed になった1件の source task が渡された場合に使う。source の native `blocking` relationship に含まれる open task と、source の native parent requirement だけを対象にする。PR merge イベントでは `Closes` により実際に closed になった Issue を source とし、PR が merge 済みでも Issue が open なら完了扱いにしない。
-- **Reconciliation mode**: source task がない定期実行で使う。候補の全 open Issue（親のない `kind:task` も含む）と、管理対象 requirement の sub-issue を pagination の最後まで走査する。
+## 判定の正本
 
-どちらの mode でも同じ分類・更新規則を使う。event mode では source の `blocking` を直接依存 task の正本とし、本文 から dependent を推測しない。
+親子関係と依存は GitHub native metadata、作業状況は assignee と task を閉じる open PR を使う。label や本文の依存表現から事実を推測しない。必要な一覧は pagination の最後まで取得し、API の合計数と照合する。不完全な取得や API failure は `unknown` として、その Issue を変更せず実装候補にも返さない。
 
-## Task classification
+native parent があれば task、parent がなく sub-issue があれば requirement。階層で決まらない場合は単一の kind を使い、矛盾・分類不能は変更しない。親のない `kind:task` は不正な task として扱う。closed Issue の label は更新せず、完了判定には open/closed と close 理由を使う。
 
-各 open task の parent、全 dependency、assignee、task を閉じる open PR、label を取得する。全ページを取得して API の合計数と一致することを確認し、不完全なら `unknown` として label を変更せず実装候補にも返さない。
+## Task の状態
 
-次の順で状態を決める。
+必要な事実を確認できた open task に、上から最初に当てはまる状態を適用する。
 
-| 確認した事実 | workflow |
+| 事実 | workflow |
 | --- | --- |
-| 親や依存が不正、または open の dependency がある | `blocked` |
+| 親・依存が不正、または open の依存がある | `blocked` |
 | task を閉じる open PR がある | `review` |
 | 担当者がいる | `in-progress` |
-| 上記がなく、全 dependency が closed | `ready` |
+| 上記がなく、依存なしまたは全依存が closed | `ready` |
 
-不正とは親の欠落、自己参照、循環、別 repository への依存など、確認できた矛盾を指す。これらは `invalid` として根拠も返す。API failure と混同しない。作業中に dependency が追加・再open された場合は `blocked` として警告する。複数の open PR が同じ task を閉じる場合は `review` を表示するが、重複を報告する。
+不正とは親の欠落、自己参照、循環、別 repository への依存など、確認できた矛盾を指す。取得失敗とは区別して根拠を報告する。作業中の task が blocked になった場合や、同じ task を閉じる open PR が複数ある場合も知らせる。
 
-## Requirement classification and completion
+## Requirement の状態と完了
 
-親の本文と全 sub-issue を取得し、取得件数が API の合計数と一致することを確認する。設計は通常の `## 設計` 節で読む。設計書へのリンクが正本ならその内容も確認する。
+親の `## 設計` 節（正本がリンク先の設計書ならその内容）と全 sub-issue を照合する。
 
-- 明示的な未決事項がある場合、または sub-issue が1件以上あり「分割」の各成果との対応に欠落・余分・曖昧さがある場合は `workflow:needs-input`。task 分割中であると確認できる場合は `workflow:in-progress` を保持する。
-- sub-issue があり、計画との対応が確認でき、1件以上 open なら `workflow:in-progress`。
-- sub-issue がなく、課題と解決・分割が揃い、未決事項が「なし」なら `workflow:ready`。
-- 設計が未完成なら既存の `workflow:in-progress` または `workflow:needs-input` を保持し、それ以外は `workflow:backlog`。
+| 事実 | workflow / 操作 |
+| --- | --- |
+| task 分割中と確認できる | `in-progress` を保持 |
+| 未決事項がある、または既存 sub-issue と「分割」の成果に欠落・余分・曖昧さがある | `needs-input` |
+| 計画と対応する sub-issue があり、1件以上 open | `in-progress` |
+| 未決事項がなく、計画の全成果に過不足なく対応する1件以上の sub-issue がすべて completed で closed | 親を completed として close |
+| sub-issue がなく、課題と解決・分割が揃い、未決事項が「なし」 | `ready` |
+| 設計が未完成 | 既存の `in-progress` / `needs-input` を保持、それ以外は `backlog` |
 
-親を自動 close できるのは、未決事項がなく、設計の「分割」の全成果が sub-issue と対応し、全 sub-issue が1件以上あり、すべて completed として closed された場合だけとする。not planned を含む場合や分割の途中で一部 task だけが完了した場合は close しない。番号の索引や追加の管理コメントは不要とする。
+上から判定し、どの条件にも当てはまらなければ状態を保持して理由を報告する。not planned を含む場合や、分割途中の一部 task だけが完了した場合は親を閉じない。情報の取得失敗は計画の不一致と区別し、label も変更しない。
 
-close 直前に本文と全 sub-issue を再取得して同じ条件を確認し、親を completed として close する。対応関係を確認できなければ `workflow:needs-input` にして理由を返す。API failure なら label も変更しない。取得先の内容が曖昧な場合は推測で完了扱いにしない。
+## Update contract
 
-## Label normalization
+- 更新直前に判定の根拠を再確認し、更新後に結果と根拠の整合を確認する。特に親の close は最新の設計と全 sub-issue で完了条件を満たす場合だけ行う。
+- open Issue の管理対象 label は kind/workflow 各1つに正規化し、一致していれば変更しない。無関係な label、`automation:enabled`、担当者、親子関係、依存は変更しない。追加の管理コメントは作らない。
+- timeout や部分失敗後は実状態を確認してから復旧を判断する。結果不明の操作を繰り返さず、競合が続く、または安全な復旧を判断できない場合はその Issue の更新を止める。
 
-目標 kind/workflow を確定できた open Issue だけを更新する。
+## Completion
 
-1. 更新直前に Issue と分類に使った全 metadata を再取得し、目標を再計算する。初回評価から事実が変わっていれば最新値を使う。
-2. 現在の `kind:*` と `workflow:*` をすべて除去し、目標 kind と workflow を各1つ追加する。既存の無関係な label と `automation:enabled` は保持する。すでに完全一致している場合は変更しない。
-3. 更新後に Issue、labels、分類事実を再取得する。kind/workflow が各1つでない、または事実が変化して目標が古くなった場合は、最新値で1回だけ再計算・再更新する。
-4. 再試行後も競合、部分失敗、または矛盾が残る場合は変更を重ねず `concurrent update` として報告し、その Issue を actionable にしない。
+確認可能な対象を処理し、変更・close の結果と根拠、判断や復旧が必要な Issue を URL 付きで報告する。確認不能・競合と、確認できた不正・計画の不一致を区別する。一部が失敗しても独立して処理できる対象は継続し、呼び出し元には部分失敗を明示する。候補なしは正常終了とする。
 
-workflow skill 内で欠けた contract label を作成せず、通常 label や `automation:enabled` を追加・削除しない。
-
-## Results
-
-- event mode では、修復後に `workflow:ready` で native blocker がすべて closed の直接依存 task の番号と URL を返す。呼び出し元は明示的な event invocation として `implement-task` へ渡せる。
-- reconciliation mode では、ready、blocked、in-progress、review、invalid、unknown、concurrent-update の一覧と、変更した label を根拠付きで返す。review task には PR URL を含める。候補がなくても正常終了する。
-- close した requirement、metadata mismatch や not planned のため close しなかった requirement、API failure で確認不能だった requirement を区別して返す。
-
-## Concurrency and failure rules
-
-- label 更新と requirement close の直前・直後に native facts を再取得する。label は materialized state であり、readiness や完了の正本にしない。
-- 部分的な API failure があれば、確認できない task を ready にせず、確認できない requirement を close しない。確認できた他の Issue の処理は継続する。
-- timeout 後は Issue を再取得して更新結果を確認し、結果が不明なまま同じ label mutation、comment、close を繰り返さない。
-- 担当者または open PR がある task は実装候補に返さない。`automation:enabled` は自動実行への opt-in とし、この skill では変更しない。
-- 呼び出し元で repository の workflow 更新を直列化する。定期実行・イベント・手動実行で同じ排他枠を使い、直列化を確認できない自動実行は変更しない。手動実行も他の実行を停止してから行う。
+Event では、更新後に `workflow:ready`、全依存が closed または依存なし、担当者・open PR なしと確認できた直接の後続 task を返す。呼び出し元は明示的な event invocation として `implement-task` へ渡せる。Reconciliation では対象の状態を報告し、scheduled dispatch の `automation:enabled` gate は維持する。このスキル自身は実装を開始しない。

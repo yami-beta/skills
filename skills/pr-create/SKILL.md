@@ -112,4 +112,4 @@ gh pr create --title "<title>" --body "<body>"
 
 ### Step 7: CI チェックの監視
 
-ユーザーが CI の監視も依頼している場合は、同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <PR> --watch --interval 30` で対象 Pull Request のチェックが完了するまで待ち、最後に `gh pr checks <PR>` で結果を確認する。依頼されていない場合は、監視するか確認してから開始する。
+ユーザーが CI の監視も依頼している場合は、同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <PR> --watch --interval 30` で対象 Pull Request のチェックが完了するまで待ち、最後に `gh pr checks <PR>` で結果を確認する。依頼されていない場合は PR の結果を報告して終了する。
