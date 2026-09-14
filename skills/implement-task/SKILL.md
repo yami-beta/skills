@@ -7,26 +7,26 @@ description: Implement a specified ready GitHub task through a verified pull req
 
 指定された task Issue を実装し、merge 時に task を close する Pull Request を作る。
 
-repository の workflow 更新は呼び出し元で直列実行する。自動実行で直列化を確認できなければ更新せず、手動実行も他の実行を停止してから行う。
+## 着手条件
 
-## Preconditions
+対象 repository と単一の task Issue が必要。未指定なら backlog を探索せず対象を要求する。Issue、親の設計、関連コメントと規約から実装範囲を把握する。
 
-1. 対象 repository と単一の task Issue を特定する。Issue が指定されていなければ backlog を探索せず、呼び出し元に対象を要求する。
-2. Issue 本文、親要件、設計、コメント、repository 規約を読む。
-3. repository に `kind:task`、`workflow:ready`、`workflow:in-progress`、`workflow:review`、`automation:enabled` が存在することを確認する。欠けていれば暗黙に作成せず、`setup-workflow` が必要な setup blocker として停止する。
-4. task が open な native sub-issue で、`kind:task` とちょうど1つの `workflow:*` を持つことを確認する。未着手なら `workflow:ready`、呼び出し元が既に確保済みなら `workflow:in-progress` でなければ実装しない。`workflow:review` なら既存 PR を確認して URL と状態を返すだけとし、新しい実装は始めない。scheduled invocation では `automation:enabled` も必須とし、人間または明示的な event invocation ではこの gate を勝手に追加・要求しない。
-5. native `blocked by` relationship を pagination の最後まで取得し、取得件数と API が返す合計数が一致したうえで、blocker がないか全 blocker が closed であることを GitHub 上で再確認する。open、参照不能、循環、自己参照、別 repository、または取得結果が不完全な dependency があれば実装せず、blocked または invalid の理由を返す。本文の dependency 表現へ fallback しない。
-6. 同じ task を閉じる open PR と既存 branch を検索する。既存 PR があれば関係を確認して `workflow:review` に整合し、重複実装せず PR URL と状態を返して終了する。label 更新に失敗しても PR を作り直さず不整合を報告する。
-7. 他者の担当があれば停止する。自分が担当していても、呼び出し元または利用者が同じ作業の再開と確認できなければ引き継がない。未担当なら自分を assign し、`workflow:in-progress` に更新する。assign できなければ実装しない。
-8. 更新後に task の全 dependency、単一の `kind:task` と `workflow:in-progress`、自分だけが担当していること、既存 PR がないことを再確認する。定期実行では `automation:enabled` も再確認し、不明または競合があればコードを変更しない。
+- task は open な native sub-issue で、単一の `kind:task` と `workflow:ready`、または同じ作業として確保済みの `workflow:in-progress` を持つ。
+- native `blocked by` は全ページを取得して API の合計数と照合し、依存なしまたは全件 closed を確認する。取得不能、自己参照、循環、別 repository への依存を本文で代用しない。
+- scheduled invocation は `automation:enabled` が必須。人間・明示的な event invocation にはこの gate を追加しない。
+- 他者の担当は引き継がず、自分の担当でも同じ作業の再開と確認できる場合だけ続行する。
+
+repository に `kind:task`、`workflow:ready`、`workflow:in-progress`、`workflow:review`、`automation:enabled` が必要。欠落時は更新せず `setup-workflow` が必要なことを返す。呼び出し元は repository 単位で定期・イベント・手動実行を直列化し、排他を確認できない自動実行は更新しない。
+
+既存 branch と task を閉じる open PR を確認する。既存 PR があれば `workflow:review` に整合して URL を返し、重複実装しない。`workflow:review` なのに PR を確認できない場合も新しい実装は始めず、不整合を報告する。
+
+未担当なら自分を assign する。コード変更前に、自分だけが担当する単一の `workflow:in-progress`、有効な親・依存・opt-in 条件、既存 PR なしを再確認する。確認できなければ実装しない。
 
 ## Attribution
 
-- 作成前に、利用者の指示と実行環境で適用される attribution 設定・規約を確認する。明示的に無効化されている場合は付けない。
-- 有効な場合は設定された表記を使う。エージェント名、モデル名、メールアドレスを推測せず、過去の別エージェントの署名を流用しない。必要な表記を確認できない場合は不足を報告し、付与済みとは扱わない。
-- 実行環境が自動付与する場合も含め、同じ attribution を重複させない。既存の他の contributor の表記を保持する。
+利用者と実行環境の設定に従い、commit と PR の attribution をそれぞれ確認する。明示的に無効なら付けず、有効なら設定された表記を使う。名前・メールを推測せず、別エージェントの署名を流用しない。自動付与と重複させず、既存 contributor と Git author / committer を保持する。
 
-コミット作成には利用可能なら `commit`、PR 作成には `pr-create` の attribution 規則を適用する。これらの skill がなくても、コミットには適用される `Co-authored-by` trailer または設定された表記、PR 本文には生成元表記を含め、作成後にそれぞれ実際の本文を取得して確認する。Git の author / committer は変更しない。欠落の修正でコミットを amend するには明示的な許可が必要となる。PR 本文の補完は他の記述を保持して行う。この規則の適用は、PR 作成後の継続監視を開始する指示ではない。
+利用可能なら `commit` と `pr-create` を使う。なくても上記を守り、作成後の実際の本文で確認する。表記不明や欠落は報告し、PR の補完は他の本文を保持する。commit の amend は明示的な許可が必要。
 
 ## Implementation and completion
 
@@ -53,4 +53,3 @@ PR 本文を引き継ぎ情報とし、追加の管理コメントは作らな�
 - label 更新の直前に Issue を再取得する。既存の無関係な label と `automation:enabled` は保持し、目標 workflow label の存在と更新後の単一性を確認する。workflow skill が label を作成してはならない。
 - コード変更前に担当設定や `workflow:in-progress` の確認に失敗したら実装しない。自分が追加した担当だけを安全に外せる場合は外し、`sync-issues` で状態を再計算する。
 - コード変更後の中断では担当を保持し、変更場所と再開に必要な情報を呼び出し元へ返す。PR 作成後の label 更新失敗は `sync-issues` で修復し、PR を作り直さない。
-- label だけで着手可能と判断せず、dependency、担当者、open PR を確認する。API の取得失敗を ready と解釈しない。

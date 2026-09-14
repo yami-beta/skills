@@ -1,52 +1,22 @@
 ---
 name: pr-monitor
-description: PR の CI チェックを完了まで監視し、最終結果を報告する。PR の CI 完了を待ちたいとき、マージ前に CI を確認したいとき、失敗チェックを早く知りたいときに使用する。
+description: PR の CI チェックを完了まで監視して結果を報告する。CI の待機・監視を依頼された場合に使用。
 allowed-tools: Bash(gh pr checks *) Bash(gh pr view *)
 argument-hint: "[pr-number-or-url]"
 ---
 
 # PR チェック監視
 
-## 概要
+指定 PR の GitHub Actions と external checks が確定するまで監視し、結果を報告する。認証済み `gh`、ネットワーク、待機または background work から再開できる環境が必要。未指定なら現在の branch の PR を使い、見つからなければ対象を確認する。
 
-`gh pr checks --watch` で GitHub Actions と external checks（Codecov 等）をまとめて監視し、全チェック確定後に結果を報告する。エージェントや実行環境に固有のツール名には依存しない。
+## 監視条件
 
-## Requirements
+開始・再開時に PR の状態と現在の checks を取得する。open でなければその状態を報告し、checks が確定済みなら待機しない。
 
-認証済みの `gh` CLI、ネットワーク接続、コマンドの終了を待つか background work の完了後に再開できる実行環境を必要とする。
+未完了なら `gh pr checks <PR> --watch --interval 30` で待機する。実行環境の長時間処理機能があれば利用し、なければ許容時間内で foreground 実行する。特定エージェントの機能名は前提にしない。ポーリング間隔は30秒以上とし、最初の失敗で終了する依頼には `--fail-fast` を使う。
 
-## Input
+## 完了と中断
 
-ユーザーが指定した Pull Request の番号または URL を対象にする。未指定の場合は、現在のブランチに紐づく Pull Request を対象にする。
+終了後に checks を再取得し、成功・失敗・未完了を区別して報告する。skipped やチェック未登録を全件 pass と解釈しない。失敗はチェック名とログ URL を添える。
 
-## Workflow
-
-### Step 1: 対象 PR と現在の状況を確認する
-
-```bash
-gh pr view <PR> --json number,title,url,state
-gh pr checks <PR>
-```
-
-`<PR>` は対象 PR 番号または URL。現在のブランチに紐づく PR を使う場合は省略する。PR が open でなければ監視せず、その状態を報告する。すべてのチェックが確定済みなら Step 3 へ進む。
-
-### Step 2: チェックを監視する
-
-```bash
-gh pr checks <PR> --watch --interval 30
-```
-
-- 実行環境に background job、monitor、thread wakeup などの長時間コマンド向け機能があれば利用する。機能名や呼び出し方は、その環境の指示に従う。
-- そのような機能がなければ foreground で待機する。実行時間の上限がある場合は、許容範囲内で待ち、上限到達時点の状態を報告する。
-- 最初の失敗で監視を終えるようユーザーが求めた場合は `--fail-fast` を追加する。
-- API レート制限を避けるため、ポーリング間隔は30秒以上にする。
-
-### Step 3: 最終状態を報告する
-
-監視コマンドの終了後に `gh pr checks <PR>` を再実行し、各チェックの最終状態を取得する。全件 pass、失敗あり、または未完了のいずれかを明示する。失敗があればチェック名とログ URL を示す。
-
-## Failure handling
-
-- `gh` が PR を見つけられない場合は、現在のブランチに PR があるか確認し、なければ PR 番号または URL をユーザーに求める。
-- 認証、権限、通信、実行時間上限により監視を継続できない場合は、最後に確認できた状態と再開方法を報告する。
-- 監視を再開するときは、まず `gh pr checks <PR>` で現在の状態を再取得し、既に完了していれば新しい監視を開始しない。
+認証・権限・通信・時間上限で続行できない場合は、最後に確認した状態と再開方法を返す。再開時も現在の状態から判断し、監視を理由に PR の修正やマージは開始しない。

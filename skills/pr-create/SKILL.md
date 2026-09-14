@@ -1,115 +1,32 @@
 ---
 name: pr-create
-description: Pull Requestを作成する。未コミットの変更があればコミットし、リモートへプッシュしてPRを作成する。「PRを作成」「プルリクエストを作成」などの要求時に使用。
+description: 変更を commit・push して Pull Request を作成または更新する。PR 作成の依頼時に使用。
 allowed-tools: Bash(git status *) Bash(git log *) Bash(git diff *) Bash(git push *) Bash(git switch *) Bash(git fetch *) Bash(gh pr create *) Bash(gh pr view *) Bash(gh repo view *) Read Glob
 argument-hint: "[補足指示]"
 ---
 
-# Pull Request 作成ワークフロー
+# Pull Request を作成
 
-## Requirements
+依頼された変更を commit・push し、レビューできる PR を作成または更新する。`git`、認証済み `gh`、ネットワーク、push と PR 作成の権限が必要。利用者の対象・base・draft 指定を反映する。
 
-`git`、認証済みの `gh` CLI、ネットワーク接続、ブランチの push と Pull Request 作成の権限を必要とする。
+## 対象と作成条件
 
-## Input
+未コミットの関連変更があれば、利用可能な `commit` スキルを使う。使えない環境でも差分を確認し、repository 規約に従う topic branch で関連変更だけを commit する。他の作業やシークレットは含めず、履歴の書き換えは明示的な許可がある場合だけ行う。
 
-明示的なスキル呼び出しに続けて渡されたテキスト、または同じ依頼内の補足指示を入力として扱い、ブランチ、コミット、Pull Request のタイトルと本文へ反映する。補足指示がなければ、変更内容と会話履歴から判断する。
+base は指定がなければ repository のデフォルト branch とし、最新のリモート状態との比較で対象変更を確認する。変更がなければ終了する。デフォルト branch から PR は作らず topic branch を用意し、ローカルのデフォルト branch に commit が残る場合は報告する。
 
-## Attribution
+同じ head の open PR があれば重複作成せず更新する。ない場合は対象 branch を push して PR を作る。API failure を「PR なし」と解釈せず、timeout 後は head と base で結果を確認してから再試行する。
 
-- 作成前に、利用者の指示と実行環境で適用される attribution 設定・規約を確認する。明示的に無効化されている場合は付けない。
-- 有効な場合は設定された表記を使う。エージェント名、モデル名、メールアドレスを推測せず、過去の別エージェントの署名を流用しない。必要な表記を確認できない場合は不足を報告し、付与済みとは扱わない。
-- 実行環境が自動付与する場合も含め、同じ attribution を重複させない。既存の他の contributor の表記を保持する。
+## レビューに必要な内容
 
-PR 本文には適用される生成元表記を含める。コミット本文を流用する場合も、コミットの trailer と PR 用の attribution は別に確認する。
+タイトルは変更の目的を簡潔に表す。本文は repository の PR テンプレートがあれば従い、なければ変更概要、必要な背景・判断、検証結果、残った懸念を変更規模に応じてまとめる。薄い節や重複する説明は省く。既存 PR の更新でも最終的な差分と説明が一致するようにする。
 
-## Workflow
+同じ repository の Issue/PR は `#123` または直接の URL で参照する。作業 repository が `yami-beta/*` の場合に限り、他 repository のリンクは `https://redirect.github.com/{org}/{repo}/...` にして backlink 通知を避ける。close キーワードの対象は redirect しない。
 
-### Step 1: 未コミットの差分を確認
+## Attribution と完了
 
-`git status --short` で変更ファイルを確認する。
+利用者と実行環境の attribution 設定に従い、明示的に無効なら付けず、有効なら設定された表記を使う。名前・モデル・メールを推測せず、過去の別エージェントの署名を流用しない。自動付与との重複を避け、既存 contributor の表記を保持する。表記が不明なら不足を報告し、付与済みとは扱わない。
 
-- 未コミットの差分なし: Step 2へ進む
-- 未コミットの差分あり: 同梱の `commit` スキルが利用可能ならその手順でブランチとコミットを作成する。スキル間連携に対応していない環境では、変更を確認し、必要ならトピックブランチを作成して、関連する変更だけをステージ・コミットする。その後 Step 2へ進む
+commit の trailer と PR 本文の生成元表記は別に確認する。作成・更新後は `gh pr view --json url,body` などで結果を取得し、期待する attribution の欠落は他の本文を保持して補う。無効化設定を理由に既存表記を削除しない。
 
-### Step 2: ブランチと既存 PR の確認
-
-- ベースブランチ（デフォルトブランチ）を取得する:
-  ```bash
-  gh repo view --json defaultBranchRef -q .defaultBranchRef.name
-  git fetch origin <base>
-  ```
-- ベースブランチとの差分がない場合（`git log origin/<base>..HEAD` が空）: PR にする変更がない旨を報告して終了する
-- 現在のブランチがデフォルトブランチの場合: デフォルトブランチからの PR は作成しない。変更内容から適切な名前（例: `feat/add-xxx`, `fix/resolve-yyy`, `docs/update-readme`）でトピックブランチを作成（`git switch -c <branch-name>`）してから Step 3 へ進む。この場合ローカルのデフォルトブランチにコミットが残り origin と分岐したままになるため、その旨をユーザーに報告する
-- 現在のブランチに紐づく PR を確認する:
-  ```bash
-  gh pr view --json url,state
-  ```
-  - open な PR が既にある場合: 新規作成はせず、`git push` で既存 PR を更新し、その URL を報告して Step 6 へ進む（Step 3〜5 はスキップ）
-  - PR がない（またはクローズ済みの）場合: Step 3 へ進む
-
-### Step 3: リモートにプッシュしてブランチの変更内容を把握
-
-リモートにプッシュする:
-
-```bash
-git push -u origin <branch-name>
-```
-
-ベースブランチからの全体像を把握する:
-
-- コミット履歴: `git log --format='%h %s%n%b---' origin/<base>..HEAD`
-- 差分の統計: `git diff --stat origin/<base>..HEAD`
-
-`<base>` は Step 2 で取得したデフォルトブランチ（ローカルの base が古い可能性があるため `origin/<base>` を使う）。
-
-### Step 4: PR タイトルとボディの作成
-
-#### タイトル
-
-- 70文字以内で変更の目的を簡潔に表す
-- コミットが1つの場合はそのコミットメッセージの件名を流用してよい
-- 複数コミットの場合は全体を包括する要約にする
-
-#### ボディ
-
-まず、リポジトリに PR テンプレートがあるか確認する:
-
-- `.github/PULL_REQUEST_TEMPLATE.md`
-- `.github/PULL_REQUEST_TEMPLATE/` ディレクトリ内のファイル
-
-**テンプレートがある場合**: テンプレートの構造に従い、会話履歴とコミット履歴を振り返って各セクションを埋める。
-
-**テンプレートがない場合**: 会話履歴とコミット履歴を振り返り、以下の構造で作成する:
-
-- **概要**: この PR で何を実現するかを 1〜3 文で説明する
-- **背景・動機**: なぜこの変更が必要になったか、解決する課題やユーザーの要求
-- **アプローチ**: 採用した設計方針とその理由、却下した代替案、フィードバックによる方針変更の経緯
-- **レビューポイント**: 特にレビュアーに確認してほしい箇所や判断（該当がなければ省略）
-
-**注意事項**:
-- 複数コミットの場合: コミットメッセージをそのまま貼り付けず、コミット群を俯瞰した要約とする
-- 単一コミットの場合: コミットメッセージの本文を PR ボディとして流用してよい
-- セクションの内容が薄い場合は無理に埋めず、該当セクションを省略する
-- ボディの長さは変更の規模に見合わせる。重複する要約や boilerplate で膨らませない
-
-issue / PR へのリンクを載せるときは以下に従う:
-
-- 同一リポジトリの issue / PR は `#123` 形式かフル URL をそのまま使う。`redirect.github.com` 経由にすると `Fixes #123` などのクローズキーワードが認識されず、マージ時の自動クローズが働かない
-- 作業リポジトリが `yami-beta/*` のときに限り、他リポジトリへのリンクは `https://redirect.github.com/{org}/{repo}/...` に書き換えて[バックリンク通知](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls#avoiding-backlinks-to-linked-references)を避ける
-
-### Step 5: Pull Request の作成
-
-```bash
-gh pr create --title "<title>" --body "<body>"
-```
-
-### Step 6: 結果の報告
-
-`gh pr view --json url,body` で作成・更新後の本文を取得し、期待する attribution が重複なく含まれることを確認する。既存 PR を push で更新した場合も確認する。欠落していれば他の本文を保持して補い、再取得する。無効化設定を理由に既存の表記を勝手に削除しない。表記が不明または更新できない場合は不足を報告する。
-
-作成（または更新）した Pull Request の URL を報告する。
-
-### Step 7: CI チェックの監視
-
-ユーザーが CI の監視も依頼している場合は、同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <PR> --watch --interval 30` で対象 Pull Request のチェックが完了するまで待ち、最後に `gh pr checks <PR>` で結果を確認する。依頼されていない場合は PR の結果を報告して終了する。
+対象 branch・base・draft 状態と本文を確認して PR URL を返す。CI 監視も依頼済みなら利用可能な `pr-monitor` を使い、なければ `gh pr checks <PR> --watch --interval 30` で待機して最終状態を再取得する。未依頼なら PR の結果を報告して終了する。
