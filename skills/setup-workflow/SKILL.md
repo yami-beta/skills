@@ -1,11 +1,11 @@
 ---
 name: setup-workflow
-description: Set up or verify the fixed GitHub labels required by this issue-driven development workflow. Use before adopting the workflow in a repository, after workflow labels were deleted, or when another workflow skill reports missing labels.
+description: Prepare or verify the fixed GitHub workflow labels. Use when adopting the issue workflow or repairing missing labels.
 ---
 
 # Set Up GitHub Issue Workflow
 
-対象 repository に workflow metadata contract の固定 label を準備する。この skill は label schema だけを管理し、Issue への label 適用や既存 Issue の migration は行わない。
+認証済みの GitHub CLI または同等の API と label 管理権限を使い、対象 repository に固定 label を準備する。Issue への適用や既存 Issue の migration は扱わない。
 
 ## Label contract
 
@@ -22,21 +22,10 @@ description: Set up or verify the fixed GitHub labels required by this issue-dri
 | `automation:enabled` | `006B75` | Scheduled agents may process this issue |
 | `origin:agent` | `BFDADC` | Created by an agent for later human triage |
 
-## Workflow
+## 更新条件と完了
 
-1. 対象 repository を特定し、認証済みの GitHub CLI または同等の GitHub API access と label 管理権限があることを確認する。
-2. repository の全 label を名前、色、説明付きで取得する。
-3. contract の各 label を評価する。
-   - 同名 label が存在する場合は再作成せず、色または説明の差異を drift として記録する。名前が一致すれば workflow の利用を妨げない presentation drift として扱い、明示的な修復依頼なしに更新しない。
-   - label が存在しない場合は表の名前、色、説明で作成する。
-4. 作成後に全 contract label を再取得し、欠落がないことを確認する。
-5. 作成した label、既存だった label、presentation drift、権限または API error のため作成できなかった label を返す。
+全 label を取得し、表にある名前の欠落分だけを指定の色・説明で作る。既存の同名 label は再作成しない。色・説明の違いは利用を妨げない presentation drift として報告し、明示的な修復依頼がある場合だけ更新する。表にない label は変更・削除しない。
 
-## Safety and idempotency
+作成後は全固定 label の存在を再確認し、作成分・既存分・drift・未作成分を報告する。timeout 後は実状態を確認してから不足分を補い、部分成功を取り消さない。
 
-- contract にない既存 label を変更または削除しない。
-- contract label の名前を入力から生成せず、表の固定値だけを使う。
-- 同名 label がある状態で作成を再試行せず、API timeout 後は label 一覧を再取得して結果を確認する。
-- 部分的に作成した後で失敗した場合は成功分を削除しない。再実行で残りだけを作成できる状態として報告する。
-- workflow skills は必要 label が欠けている場合に typo や類似名の label を暗黙作成せず、この setup skill の実行を要求する。
-- この skill の実行は Issue に `automation:enabled` または `origin:agent` を付ける許可を意味しない。
+他の workflow skill は label 欠落を暗黙に補わず、このスキルによる setup を必要とする。setup は Issue に `automation:enabled` や `origin:agent` を付ける許可を意味しない。
