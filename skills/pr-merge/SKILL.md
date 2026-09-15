@@ -1,32 +1,102 @@
 ---
 name: pr-merge
-description: CI・レビューと承認を確認して Pull Request をマージする。PR のマージ依頼時に使用。
+description: Pull Requestをマージする。マージ前にCIチェックとレビュー状態を確認し、リポジトリのマージ設定と履歴の慣習に応じた方法でマージする。「PRをマージ」「プルリクエストをマージ」などの要求時に使用。
 allowed-tools: Bash(gh pr merge *) Bash(gh pr view *) Bash(gh pr checks *) Bash(gh repo view *) Bash(git fetch *) Bash(git log *) Bash(git rev-parse *) Bash(git push origin --delete *)
 argument-hint: "[pr-number-or-url]"
 ---
 
-# Pull Request をマージ
+# Pull Request マージワークフロー
 
-指定 PR の状態と承認を確認し、許可された方法でマージして結果を返す。未指定なら現在の branch の PR が対象。`git`、認証済み `gh`、ネットワーク、マージと対象 branch 削除の権限が必要。
+## Requirements
 
-## マージ条件
+`git`、認証済みの `gh` CLI、ネットワーク接続、Pull Request のマージとブランチ削除の権限を必要とする。
 
-PR の状態、mergeability、CI、レビューを確認する。closed / merged は対象外、コンフリクトは解消が必要な状態として終了する。取得不能・判定待ちは成功と扱わない。
+## Input
 
-pending の CI は待機の依頼があれば待ち、なければ待つか確認する。利用可能なら `pr-monitor`、なければ `gh pr checks <PR> --watch --interval 30` を使う。失敗や `CHANGES_REQUESTED` があれば内容を報告して止める。pending・失敗・変更要求を残した続行には明示的な指示が必要で、repository の保護設定は迂回しない。
+ユーザーが指定した Pull Request の番号または URL を対象にする。未指定の場合は、現在のブランチに紐づく Pull Request を対象にする。次のコマンドで repository が許可するマージ方法を取得する。
 
-方法は repository が許可する `--merge` / `--squash` / `--rebase` の中から、利用者の指定と repository 規約に従って選ぶ。指定がなければ最新の base 履歴を参考に提案する。履歴だけで判断できなければ、許可される方法を提示して確認する。
+```bash
+gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed
+```
 
-対象 PR（タイトル・URL）・方法・実行条件への承認を確認し、同じ承認を取り直さない。条件変更や未承認の項目があれば提示して確認する。実行直前にも状態を確認し、承認時から変わった内容を無条件にマージしない。
+## Workflow
 
-## マージとクリーンアップ
+### Step 1: マージ前の状態確認
 
-`gh pr merge <PR> <method>` で実行し、PR が実際に merged になったことを確認する。timeout やマージ待ちの状態では、結果不明のまま再実行したり branch を削除したりしない。
+対象 PR の状態を確認する:
 
-main worktree では、安全に topic branch を削除できる場合に `--delete-branch` を利用できる。linked worktree ではこれを使わず、マージ確認後に対象リモートの topic branch だけを削除する。PR の head repository と branch を確認し、同名というだけで `origin` の branch を削除しない。利用中のローカル branch と worktree は保持する。
+```bash
+gh pr view <pr-number> --json title,url,state,mergeable,reviewDecision,headRefName
+gh pr checks <pr-number>
+```
 
-追跡情報は `git fetch --prune` で整理する。削除失敗は既に削除済みか、権限等の問題かを区別し、マージの成否と混同しない。
+- `state` が `OPEN` 以外（`MERGED` / `CLOSED`）の場合: マージ対象外としてその旨を報告して終了する
+- `mergeable` が `CONFLICTING` の場合: コンフリクトの解消が必要な旨を報告して終了する
+- チェックに pending がある場合: CI の完了を待つかユーザーに確認する。「待つ」が選ばれたら同梱の `pr-monitor` スキルが利用可能ならその手順を使う。スキル間連携に対応していない環境では、`gh pr checks <pr-number> --watch --interval 30` で待機する。全チェック pass を確認してから Step 2 へ進む。「待たない」が選ばれたら現状を報告して終了する（pending のままのマージ続行はユーザーの明示的な指示があった場合のみ）
+- チェックに失敗がある、または `reviewDecision` が `CHANGES_REQUESTED` の場合: マージせずその内容を報告して終了する。続行はユーザーの明示的な指示があった場合のみ
+- すべて問題なければ Step 2 へ進む
 
-## 完了
+### Step 2: マージ方法の決定
 
-PR のタイトルと URL、採用した方法、マージ結果、branch 削除の結果を報告する。残ったローカル branch / worktree や、未完了・確認不能な操作があれば明示する。
+上記Contextの「許可されているマージ方法」と、デフォルトブランチの履歴から読み取れる運用を交差させて決める。
+
+デフォルトブランチの履歴を確認する:
+
+```bash
+gh repo view --json defaultBranchRef -q .defaultBranchRef.name
+git log -20 --format='%h %p %s' origin/<base>   # %p の親が2つ以上ある行がマージコミット、%s に PR 番号が付くか
+```
+
+`git log --merges -20` は件数上限がフィルタ後に効くため「直近20件のうちのマージ」にはならない。`%p` の親の数で判定する。
+
+- マージコミットがある → Merge commit (`--merge`)
+- 件名末尾に `(#123)` のような PR 番号がある → Squash merge (`--squash`)
+- どちらも見られない（直線的な履歴） → Rebase merge (`--rebase`)
+- 履歴が数件以下で判断材料が乏しい、または推定した方法が許可されていない場合は、許可されている中から Merge commit → Squash merge → Rebase merge の順で最初の方法を採る
+
+決定した方法は Step 3 でユーザーに提示して確認を得るため、推定を誤ってもそこで訂正できる。
+
+### Step 3: Pull Requestをマージ
+
+マージは取り消せない操作のため、実行前に対象 PR（タイトル・URL）とマージ方法を提示し、ユーザーの確認を得る。
+
+確認を求める前に、作業ディレクトリが linked worktree かどうかを判定する:
+
+```bash
+git rev-parse --git-dir --git-common-dir
+```
+
+2つの出力が異なれば linked worktree、同じ（どちらも `.git` 等）なら main worktree である。
+
+**main worktree の場合**、確認が取れたらマージを実行する:
+
+```bash
+gh pr merge <pr-number> <merge-method> --delete-branch
+```
+
+- `<merge-method>` には Step 2 で決定した方法（`--merge` / `--squash` / `--rebase`）を指定する
+- pr-number が指定されていない場合は省略する（現在のブランチの PR が対象になる）
+- `--delete-branch` によりローカル・リモートのトピックブランチが削除される（対象ブランチをチェックアウトしている場合はデフォルトブランチへの切り替えも行われる）
+
+**linked worktree の場合**、`--delete-branch` は使わない（デフォルトブランチが main worktree 側でチェックアウト済みのため切り替えに失敗し、チェックアウト中のローカルブランチも削除できない）。確認が取れたら `--delete-branch` なしでマージし、リモートのトピックブランチのみ別途削除する:
+
+```bash
+gh pr merge <pr-number> <merge-method>
+git push origin --delete <head-branch>
+```
+
+- `<head-branch>` には Step 1 で取得した `headRefName` を指定する
+- リポジトリの自動削除設定などで既に削除済みの場合、`git push origin --delete` は失敗するが問題ない
+- ローカルブランチとワークツリーはチェックアウト中のため削除できない。残ることを Step 5 で報告する
+
+### Step 4: クリーンアップ
+
+リモート追跡ブランチをクリーンアップする:
+
+```bash
+git fetch --prune
+```
+
+### Step 5: 結果の報告
+
+マージした Pull Request のタイトルと URL、採用したマージ方法、ブランチ削除の結果を報告する。linked worktree でマージした場合は、リモートブランチのみ削除しローカルブランチとワークツリーが残っていることを明記する。
