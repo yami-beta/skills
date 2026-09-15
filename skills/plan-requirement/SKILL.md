@@ -41,10 +41,12 @@ Issue と関連するコード・tests・規約を調べ、現在の挙動と期
 
 ## State and update contract
 
+回答待ちを優先し、上から最初に当てはまる状態を使う。
+
 | 親の状態 | workflow |
 | --- | --- |
-| 調査・設計中、または承認済みの task 分割中 | `in-progress` |
 | 利用者の回答待ち・保留された判断がある | `needs-input` |
+| 上記がなく、調査・設計中または承認済みの task 分割中 | `in-progress` |
 | 設計が分割可能で、task 作成前 | `ready` |
 | 計画の全成果を task 化できた | `in-progress` |
 

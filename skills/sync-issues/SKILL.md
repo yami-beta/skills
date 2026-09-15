@@ -39,8 +39,9 @@ native parent があれば task、parent がなく sub-issue があれば requir
 
 | 事実 | workflow / 操作 |
 | --- | --- |
-| task 分割中と確認できる | `in-progress` を保持 |
-| 未決事項がある、または既存 sub-issue と「分割」の成果に欠落・余分・曖昧さがある | `needs-input` |
+| 未決事項がある、または既存 sub-issue と計画の対応に余分・曖昧さがある | `needs-input` |
+| 承認済み計画の未作成分だけが残り、分割処理の継続中と確認できる | `in-progress` を保持 |
+| 既存 sub-issue があるが計画の成果に欠落があり、分割処理の継続中と確認できない | `needs-input` |
 | 計画と対応する sub-issue があり、1件以上 open | `in-progress` |
 | 未決事項がなく、計画の全成果に過不足なく対応する1件以上の sub-issue がすべて completed で closed | 親を completed として close |
 | sub-issue がなく、課題と解決・分割が揃い、未決事項が「なし」 | `ready` |

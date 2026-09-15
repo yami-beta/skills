@@ -13,7 +13,7 @@ description: Select and claim one ready, automation-enabled GitHub task. Use for
 
 着手可能なのは、有効な native parent があり、依存がないか全件 closed、担当者・task を閉じる open PR がない task だけ。kind/workflow は各1つを必要とする。依存は全ページを確認し、本文で代用しない。取得不能、不正な親、自己参照、循環、別 repository への依存がある候補は除外する。
 
-優先順位は repository 規約に従い、なければ milestone due date、Issue 番号の昇順で選ぶ。
+候補一覧を全ページ取得し、取得完了を確認してから選ぶ。取得が不完全なら確保しない。優先順位は repository 規約に従い、なければ milestone due date、Issue 番号の昇順とする。
 
 ## 確保と完了
 
