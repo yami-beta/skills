@@ -7,7 +7,7 @@
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
 - **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
-- **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-merge`, `pr-monitor`。
+- **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`。
 
 ```sh
 # issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
@@ -15,7 +15,7 @@ gh skill install yami-beta/skills setup-workflow plan-requirement pick-task \
   implement-task create-follow-up sync-issues --agent claude-code
 
 # 汎用 skill を user scope へ
-gh skill install yami-beta/skills commit pr-create pr-merge pr-monitor \
+gh skill install yami-beta/skills commit pr-create pr-resume pr-merge pr-monitor cloud-handoff \
   --agent claude-code --scope user
 ```
 
@@ -59,8 +59,15 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 | --- | --- |
 | [`commit`](skills/commit/SKILL.md) | 変更を確認し、Conventional Commits 形式の commit を作成する |
 | [`pr-create`](skills/pr-create/SKILL.md) | 未コミットの変更を commit し、push して Pull Request を作成する |
+| [`pr-resume`](skills/pr-resume/SKILL.md) | 自動実装などが作成した既存 PR を引き継ぎ、残作業の実装・修正・検証を行う |
 | [`pr-merge`](skills/pr-merge/SKILL.md) | CI とレビュー状態を確認し、リポジトリの慣習に応じた方法で merge する |
 | [`pr-monitor`](skills/pr-monitor/SKILL.md) | CI チェックの完了を監視し、結果を報告する |
+
+## Session handoff
+
+[`cloud-handoff`](skills/cloud-handoff/SKILL.md) は、ローカルで進めている作業のコード・判断・残作業・検証結果を、Claude Code や Codex のクラウドセッションへ引き継ぎます。利用可能な正式機能で受け渡し、直接起動できない環境では引き継ぎ文と手動操作を返します。
+
+利用例: `$cloud-handoff この作業をクラウドに引き継いで、残りの実装とテスト、PR 作成まで進めてください`。実行せず準備だけ行う場合は、その旨を指定します。
 
 ## Issue-driven development workflow
 
@@ -124,7 +131,7 @@ task:        blocked | ready -> in-progress -> review -> closed
 
 `implement-task` は task を閉じる PR を作り、変更概要・検証結果を PR 本文に記録して終了します。`workflow:review` は PR 作成済みの表示です。担当者は PR 対応中も保持します。
 
-レビュー、CI 失敗への修正、マージは人間が確認し、必要に応じてエージェントへ依頼します。PR の継続監視や自動修正は開始しません。マージで task が閉じた後、`sync-issues` が後続 task の着手可否を更新します。親要件は設計の「分割」と全 sub-issue の対応を確認し、作成漏れがなく全件 completed の場合だけ閉じます。
+レビュー、CI 失敗への修正、マージは人間が確認し、必要に応じてエージェントへ依頼します。既存 PR の実装作業を引き継ぐ場合は `pr-resume` を使います。例えば `$pr-resume <PR URL> レビュー指摘と CI 失敗を修正して PR を更新してください` と依頼します。PR の継続監視や自動修正は開始しません。マージで task が閉じた後、`sync-issues` が後続 task の着手可否を更新します。親要件は設計の「分割」と全 sub-issue の対応を確認し、作成漏れがなく全件 completed の場合だけ閉じます。
 
 設計は通常の `## 設計` 見出しで記録します。子タスク一覧と依存関係は GitHub の sub-issue・dependency に任せ、本文へ別の索引を作りません。follow-up の重複は問題箇所、期待する成果、関連 Issue/PR から確認します。
 
