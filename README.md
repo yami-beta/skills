@@ -19,15 +19,19 @@ plugin に `version` を持たせていないため、commit SHA で更新を判
 
 #### Cloud sessions
 
-クラウドセッションは手元にインストールした plugin も、リポジトリの `.claude/settings.json` で宣言した plugin も読み込みません。claude.ai/code の環境設定にある setup script で、セッションの VM へ導入します。
+クラウドセッションは手元にインストールした plugin も、リポジトリの `.claude/settings.json` で宣言した plugin も読み込みません。また、このリポジトリは private のため、セッションに追加していないリポジトリとしては GitHub から取得できません。そこで、セッションに yami-beta/skills を追加し、clone された作業ツリーを local directory の marketplace として登録します。
 
-```sh
-#!/bin/bash
-claude plugin marketplace add yami-beta/skills || true
-claude plugin install yami-beta-skills@yami-beta || true
-```
+1. claude.ai/code の環境設定にある setup script に次を設定します。
 
-setup script の結果は環境のキャッシュとして約7日間再利用されるため、その間はリポジトリの更新が反映されません。すぐに反映するときはセッション内で更新コマンドを実行するか、setup script を変更してキャッシュを作り直します。
+   ```sh
+   #!/bin/bash
+   claude plugin marketplace add /home/user/skills || true
+   claude plugin install yami-beta-skills@yami-beta || true
+   ```
+
+2. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
+
+setup script は Claude Code の起動前に実行され、その時点でセッションに追加したリポジトリは `/home/user/<repo>` に clone されています。local directory の marketplace の plugin はコピーされずにその場所から読み込まれるため、セッションで選んだ yami-beta/skills のブランチの内容がそのまま使われます。yami-beta/skills を追加しないセッションでは plugin は読み込まれません。
 
 ### gh skill
 
