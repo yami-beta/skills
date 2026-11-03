@@ -4,6 +4,33 @@
 
 ## Installation
 
+Claude Code では plugin として、Codex など他のエージェントでは `gh skill` で導入します。同じ skill を両方の経路で導入すると重複して表示されるため、エージェントごとにどちらか一方を使います。
+
+### Claude Code plugin
+
+このリポジトリは Claude Code の plugin marketplace（`yami-beta`）を兼ねており、全 skill を1つの plugin `yami-beta-skills` として配布します。plugin の skill は `/yami-beta-skills:commit` のように plugin 名で修飾して呼び出します。この README の `$pr-resume` のような例は、plugin では `/yami-beta-skills:pr-resume` に読み替えます。
+
+```sh
+claude plugin marketplace add yami-beta/skills
+claude plugin install yami-beta-skills@yami-beta
+```
+
+plugin に `version` を持たせていないため、commit SHA で更新を判定します。自作 marketplace は auto-update が既定で無効なので、`claude plugin marketplace update yami-beta` の後に `claude plugin update yami-beta-skills@yami-beta` で更新するか、`/plugin` の Marketplaces タブで auto-update を有効にします。
+
+#### Cloud sessions
+
+クラウドセッションは手元にインストールした plugin も、リポジトリの `.claude/settings.json` で宣言した plugin も読み込みません。claude.ai/code の環境設定にある setup script で、セッションの VM へ導入します。
+
+```sh
+#!/bin/bash
+claude plugin marketplace add yami-beta/skills || true
+claude plugin install yami-beta-skills@yami-beta || true
+```
+
+setup script の結果は環境のキャッシュとして約7日間再利用されるため、その間はリポジトリの更新が反映されません。すぐに反映するときはセッション内で更新コマンドを実行するか、setup script を変更してキャッシュを作り直します。
+
+### gh skill
+
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
 - **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
@@ -23,7 +50,7 @@ gh skill install yami-beta/skills commit pr-create pr-resume pr-merge pr-monitor
 
 同名の skill が両 scope に存在する場合、Claude Code は user scope を優先します。project scope の版を使わせたい skill は user scope へ導入しないでください。
 
-### Updating
+#### Updating
 
 更新は `gh skill update --all` で行います。リリースタグは作成していないため、既定ブランチの HEAD が常に取得されます。scope ごとに導入した skill は、その scope の位置（project scope なら対象リポジトリ内）で更新します。
 
@@ -36,6 +63,9 @@ gh skill install yami-beta/skills commit pr-create pr-resume pr-merge pr-monitor
 ## Repository structure
 
 ```text
+.claude-plugin/
+├── marketplace.json      # Claude Code plugin marketplace の定義
+└── plugin.json           # plugin yami-beta-skills の manifest
 skills/
 └── <skill-name>/
     ├── SKILL.md          # 必須: YAML frontmatter と指示
@@ -193,13 +223,14 @@ native relationship の設定、再取得、または照合に失敗した task 
 
 ## Validation
 
-`gh skill publish --dry-run` で、全 skill を Agent Skills specification に対して検証します。
+`gh skill publish --dry-run` で全 skill を Agent Skills specification に対して、`claude plugin validate .` で marketplace と plugin の manifest を検証します。`claude plugin validate .` は `version` 未指定の warning を出しますが、commit SHA で更新を判定するための意図した状態です。
 
 ```sh
 rg -n 'label[-]free|without (using|relying on) label[s]' README.md skills
 rg -n 'Depends[ ]on' skills
 rg -n 'Depends[ ]on' README.md
 gh skill publish --dry-run
+claude plugin validate .
 ```
 
 最初の2つの検索は旧 workflow 方針が残っていないことを確認し、結果が0件になることを期待します。3つ目の検索結果はこの移行手順内の例示だけであることを確認します。

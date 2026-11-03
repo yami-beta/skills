@@ -1,0 +1,14 @@
+{
+  "name": "yami-beta",
+  "description": "yami-beta の個人用 Agent Skills",
+  "owner": {
+    "name": "yami-beta"
+  },
+  "plugins": [
+    {
+      "name": "yami-beta-skills",
+      "source": "./",
+      "description": "Git/GitHub の commit・Pull Request 操作、クラウドへの作業引き継ぎ、Issue 駆動開発 workflow の Agent Skills"
+    }
+  ]
+}
