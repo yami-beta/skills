@@ -1,9 +1,0 @@
-{
-  "name": "yami-beta-skills",
-  "description": "Git/GitHub の commit・Pull Request 操作、クラウドへの作業引き継ぎ、Issue 駆動開発 workflow の Agent Skills",
-  "author": {
-    "name": "yami-beta"
-  },
-  "repository": "https://github.com/yami-beta/skills",
-  "license": "MIT"
-}

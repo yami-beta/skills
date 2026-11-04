@@ -8,25 +8,37 @@ Claude Code では plugin として、Codex など他のエージェントでは
 
 ### Claude Code plugin
 
-このリポジトリは Claude Code の plugin marketplace（`yami-beta`）を兼ねており、全 skill を1つの plugin `yami-beta-skills` として配布します。plugin の skill は `/yami-beta-skills:commit` のように plugin 名で修飾して呼び出します。この README の `$pr-resume` のような例は、plugin では `/yami-beta-skills:pr-resume` に読み替えます。
+このリポジトリは Claude Code の plugin marketplace（`yami-beta`）を兼ねており、skill を用途別の plugin として配布します。必要な plugin だけを導入します。
+
+| Plugin | Skill |
+| --- | --- |
+| `git-workflow` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
+| `issue-workflow` | `setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
+
+`issue-workflow` は `commit` と `pr-create` を使うため `git-workflow` に依存しており、導入すると `git-workflow` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
 
 ```sh
 claude plugin marketplace add yami-beta/skills
-claude plugin install yami-beta-skills@yami-beta
+claude plugin install git-workflow@yami-beta
+
+# issue-driven workflow を project scope へ（対象リポジトリ内で実行）
+claude plugin install issue-workflow@yami-beta --scope project
 ```
 
-plugin に `version` を持たせていないため、commit SHA で更新を判定します。自作 marketplace は auto-update が既定で無効なので、`claude plugin marketplace update yami-beta` の後に `claude plugin update yami-beta-skills@yami-beta` で更新するか、`/plugin` の Marketplaces タブで auto-update を有効にします。
+plugin の skill は `/git-workflow:commit` のように plugin 名で修飾して呼び出します。この README の `$pr-resume` のような例は、plugin では `/git-workflow:pr-resume` に読み替えます。
+
+plugin に `version` を持たせていないため、commit SHA で更新を判定します。自作 marketplace は auto-update が既定で無効なので、`claude plugin marketplace update yami-beta` の後に `claude plugin update <plugin>@yami-beta` で更新するか、`/plugin` の Marketplaces タブで auto-update を有効にします。
 
 #### Cloud sessions
 
 クラウドセッションは手元にインストールした plugin も、リポジトリの `.claude/settings.json` で宣言した plugin も読み込みません。また、このリポジトリは private のため、セッションに追加していないリポジトリとしては GitHub から取得できません。そこで、セッションに yami-beta/skills を追加し、clone された作業ツリーを local directory の marketplace として登録します。
 
-1. claude.ai/code の環境設定にある setup script に次を設定します。
+1. claude.ai/code の環境設定にある setup script に次を設定します。導入する plugin は用途に応じて選びます。
 
    ```sh
    #!/bin/bash
    claude plugin marketplace add /home/user/skills || true
-   claude plugin install yami-beta-skills@yami-beta || true
+   claude plugin install git-workflow@yami-beta || true
    ```
 
 2. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
@@ -68,8 +80,7 @@ gh skill install yami-beta/skills commit pr-create pr-resume pr-merge pr-monitor
 
 ```text
 .claude-plugin/
-├── marketplace.json      # Claude Code plugin marketplace の定義
-└── plugin.json           # plugin yami-beta-skills の manifest
+└── marketplace.json      # Claude Code plugin marketplace と各 plugin の skill 構成
 skills/
 └── <skill-name>/
     ├── SKILL.md          # 必須: YAML frontmatter と指示
@@ -227,7 +238,7 @@ native relationship の設定、再取得、または照合に失敗した task 
 
 ## Validation
 
-`gh skill publish --dry-run` で全 skill を Agent Skills specification に対して、`claude plugin validate .` で marketplace と plugin の manifest を検証します。`claude plugin validate .` は `version` 未指定の warning を出しますが、commit SHA で更新を判定するための意図した状態です。
+`gh skill publish --dry-run` で全 skill を Agent Skills specification に対して、`claude plugin validate .` で marketplace の定義を検証します。skill を追加・改名・削除したときは、`.claude-plugin/marketplace.json` の各 plugin の `skills` も更新します。
 
 ```sh
 rg -n 'label[-]free|without (using|relying on) label[s]' README.md skills

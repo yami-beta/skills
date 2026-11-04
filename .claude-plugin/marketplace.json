@@ -6,9 +6,41 @@
   },
   "plugins": [
     {
-      "name": "yami-beta-skills",
+      "name": "git-workflow",
       "source": "./",
-      "description": "Git/GitHub の commit・Pull Request 操作、クラウドへの作業引き継ぎ、Issue 駆動開発 workflow の Agent Skills"
+      "description": "commit と Pull Request の作成・引き継ぎ・監視・マージ、クラウドセッションへの作業引き継ぎ",
+      "author": {
+        "name": "yami-beta"
+      },
+      "repository": "https://github.com/yami-beta/skills",
+      "license": "MIT",
+      "skills": [
+        "./skills/commit",
+        "./skills/pr-create",
+        "./skills/pr-resume",
+        "./skills/pr-merge",
+        "./skills/pr-monitor",
+        "./skills/cloud-handoff"
+      ]
+    },
+    {
+      "name": "issue-workflow",
+      "source": "./",
+      "description": "GitHub Issue を起点に要件の整理、task への分割、実装 Pull Request の作成、状態の整合を行う workflow",
+      "author": {
+        "name": "yami-beta"
+      },
+      "repository": "https://github.com/yami-beta/skills",
+      "license": "MIT",
+      "dependencies": ["git-workflow"],
+      "skills": [
+        "./skills/setup-workflow",
+        "./skills/plan-requirement",
+        "./skills/pick-task",
+        "./skills/implement-task",
+        "./skills/create-follow-up",
+        "./skills/sync-issues"
+      ]
     }
   ]
 }
