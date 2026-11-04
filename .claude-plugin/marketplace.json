@@ -6,7 +6,7 @@
   },
   "plugins": [
     {
-      "name": "git-workflow",
+      "name": "yami-beta-skills",
       "source": "./",
       "description": "commit と Pull Request の作成・引き継ぎ・監視・マージ、クラウドセッションへの作業引き継ぎ",
       "author": {
@@ -24,7 +24,7 @@
       ]
     },
     {
-      "name": "issue-workflow",
+      "name": "software-factory",
       "source": "./",
       "description": "GitHub Issue を起点に要件の整理、task への分割、実装 Pull Request の作成、状態の整合を行う workflow",
       "author": {
@@ -32,7 +32,7 @@
       },
       "repository": "https://github.com/yami-beta/skills",
       "license": "MIT",
-      "dependencies": ["git-workflow"],
+      "dependencies": ["yami-beta-skills"],
       "skills": [
         "./skills/setup-workflow",
         "./skills/plan-requirement",

@@ -12,20 +12,20 @@ Claude Code では plugin として、Codex など他のエージェントでは
 
 | Plugin | Skill |
 | --- | --- |
-| `git-workflow` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
-| `issue-workflow` | `setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
+| `yami-beta-skills` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
+| `software-factory` | `setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
 
-`issue-workflow` は `commit` と `pr-create` を使うため `git-workflow` に依存しており、導入すると `git-workflow` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
+`software-factory` は `commit` と `pr-create` を使うため `yami-beta-skills` に依存しており、導入すると `yami-beta-skills` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
 
 ```sh
 claude plugin marketplace add yami-beta/skills
-claude plugin install git-workflow@yami-beta
+claude plugin install yami-beta-skills@yami-beta
 
 # issue-driven workflow を project scope へ（対象リポジトリ内で実行）
-claude plugin install issue-workflow@yami-beta --scope project
+claude plugin install software-factory@yami-beta --scope project
 ```
 
-plugin の skill は `/git-workflow:commit` のように plugin 名で修飾して呼び出します。この README の `$pr-resume` のような例は、plugin では `/git-workflow:pr-resume` に読み替えます。
+plugin の skill は `/yami-beta-skills:commit` のように plugin 名で修飾して呼び出します。この README の `$pr-resume` のような例は、plugin では `/yami-beta-skills:pr-resume` に読み替えます。
 
 plugin に `version` を持たせていないため、commit SHA で更新を判定します。自作 marketplace は auto-update が既定で無効なので、`claude plugin marketplace update yami-beta` の後に `claude plugin update <plugin>@yami-beta` で更新するか、`/plugin` の Marketplaces タブで auto-update を有効にします。
 
@@ -38,7 +38,7 @@ plugin に `version` を持たせていないため、commit SHA で更新を判
    ```sh
    #!/bin/bash
    claude plugin marketplace add /home/user/skills || true
-   claude plugin install git-workflow@yami-beta || true
+   claude plugin install yami-beta-skills@yami-beta || true
    ```
 
 2. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
@@ -50,7 +50,7 @@ setup script の結果は環境単位でキャッシュされ、その環境の�
 ```json
 {
   "enabledPlugins": {
-    "git-workflow@yami-beta": true
+    "yami-beta-skills@yami-beta": true
   }
 }
 ```
