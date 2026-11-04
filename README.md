@@ -31,19 +31,33 @@ plugin に `version` を持たせていないため、commit SHA で更新を判
 
 #### Cloud sessions
 
-クラウドセッションは手元にインストールした plugin も、リポジトリの `.claude/settings.json` で宣言した plugin も読み込みません。また、このリポジトリは private のため、セッションに追加していないリポジトリとしては GitHub から取得できません。そこで、セッションに yami-beta/skills を追加し、clone された作業ツリーを local directory の marketplace として登録します。
+クラウドセッションは手元に登録した marketplace や導入した plugin を読み込まず、リポジトリの `.claude/settings.json` で宣言した marketplace も追加しません。また、このリポジトリは private のため、セッションに追加していないリポジトリとしては GitHub から取得できません。そこで、セッションに yami-beta/skills を追加し、clone された作業ツリーを local directory の marketplace として登録したうえで、使う plugin を作業対象のリポジトリ側で選びます。
 
-1. claude.ai/code の環境設定にある setup script に次を設定します。導入する plugin は用途に応じて選びます。
+1. claude.ai/code の環境設定にある setup script で marketplace を登録します。plugin はここでは導入しません。
 
    ```sh
    #!/bin/bash
    claude plugin marketplace add /home/user/skills || true
-   claude plugin install git-workflow@yami-beta || true
    ```
 
-2. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
+2. 作業対象のリポジトリの `.claude/settings.json` で、使う plugin を有効にしてコミットします。
 
-setup script は Claude Code の起動前に実行され、その時点でセッションに追加したリポジトリは `/home/user/<repo>` に clone されています。local directory の marketplace の plugin はコピーされずにその場所から読み込まれるため、セッションで選んだ yami-beta/skills のブランチの内容がそのまま使われます。yami-beta/skills を追加しないセッションでは plugin は読み込まれません。
+   ```json
+   {
+     "enabledPlugins": {
+       "git-workflow@yami-beta": true,
+       "issue-workflow@yami-beta": true
+     }
+   }
+   ```
+
+3. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
+
+setup script は Claude Code の起動前に実行され、その時点でセッションに追加したリポジトリは `/home/user/<repo>` に clone されています。setup script の結果は環境単位でキャッシュされ、別のリポジトリのセッションにも使われるため、plugin の選択は setup script ではなくリポジトリの `enabledPlugins` で行います。複数のリポジトリを追加したセッションでも、各リポジトリの `.claude/settings.json` の `enabledPlugins` は読み込まれます。
+
+marketplace 内の plugin は導入しなくても `enabledPlugins` だけで有効になり、コピーされずにその場所から読み込まれます。そのため、セッションで選んだ yami-beta/skills のブランチの内容がそのまま使われます。yami-beta/skills を追加しないセッションでは plugin は読み込まれません。
+
+同じ `enabledPlugins` は、手元で `yami-beta` marketplace を登録していれば手元のセッションでも有効です。他の人と共有するリポジトリにコミットすると、marketplace を登録していない人の環境では plugin が見つからないエラーが表示されます。
 
 ### gh skill
 
