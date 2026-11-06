@@ -31,7 +31,7 @@ description: 既存の Pull Request の今後の作業を、PR の head branch �
 - Codex CLI の `codex cloud exec --env <ENV_ID> --branch <head branch> "<引き継ぎ文>"` は開始 branch を直接指定できる。
 - 開始 branch を指定できない機能では、開始後に head branch を checkout させる指示で補う。
 
-クラウドの環境は skill 側で選ばない。Claude Code CLI は、作業対象 repository の project settings などに設定された `remote.defaultEnvironmentId` を既定の環境として使うため、その設定に従う。環境の指定が必須の機能では、利用者が指定した環境、または対象 repository に対応する環境が一つに定まる場合はそれを使い、定まらなければ確認する。
+クラウドの環境は、利用者の指定か実行環境の既定に従い、推測で選ばない。指定が必須で一つに定まらない場合は確認する。
 
 起動結果が不明なら実状態を確認してから再試行し、重複したセッションを作らない。起動後は同じ作業をローカルで進めない。セッションタイトルを設定できる場合は `#123 <PR タイトル>` のように PR 番号が分かる名前にする。
 
