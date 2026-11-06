@@ -31,21 +31,19 @@ plugin に `version` を持たせていないため、commit SHA で更新を判
 
 #### Cloud sessions
 
-クラウドセッションは手元に登録した marketplace や導入した plugin を読み込まず、リポジトリの `.claude/settings.json` で宣言した marketplace も追加しません。また、このリポジトリは private のため、セッションに追加していないリポジトリとしては GitHub から取得できません。そこで、セッションに yami-beta/skills を追加し、clone された作業ツリーを local directory の marketplace として登録します。
+クラウドセッションは手元に登録した marketplace や導入した plugin を読み込まず、リポジトリの `.claude/settings.json` で宣言した marketplace も追加しません。claude.ai/code の環境設定にある setup script で、GitHub からこの marketplace を登録し、その環境で使う plugin を導入します。
 
-1. claude.ai/code の環境設定にある setup script で marketplace を登録し、その環境で使う plugin を導入します。
+```sh
+#!/bin/bash
+claude plugin marketplace add yami-beta/skills || true
+claude plugin install yami-beta-skills@yami-beta || true
+```
 
-   ```sh
-   #!/bin/bash
-   claude plugin marketplace add /home/user/skills || true
-   claude plugin install yami-beta-skills@yami-beta || true
-   ```
+setup script は Claude Code の起動前に実行されます。セッションに yami-beta/skills を追加する必要はなく、`claude --cloud` で作業対象のリポジトリだけを clone するセッションでも plugin を使えます。
 
-2. その環境でセッションを開始するとき、作業対象のリポジトリに加えて yami-beta/skills を追加します。
+setup script の結果は環境単位でキャッシュされ、その環境のすべてのセッションで使われます。導入した plugin もキャッシュした時点の内容になるため、skill の更新が反映されない場合は環境のキャッシュを作り直します。
 
-setup script は Claude Code の起動前に実行され、その時点でセッションに追加したリポジトリは `/home/user/<repo>` に clone されています。local directory の marketplace の plugin はコピーされずにその場所から読み込まれるため、セッションで選んだ yami-beta/skills のブランチの内容がそのまま使われます。yami-beta/skills を追加しないセッションでは plugin は読み込まれません。
-
-setup script の結果は環境単位でキャッシュされ、その環境のすべてのセッションで使われます。使う plugin はプロジェクトごとに環境を分けて選びます。1つの環境で複数のプロジェクトを使い分けたい場合は、setup script では marketplace の登録だけを行い、作業対象のリポジトリの `.claude/settings.json` で使う plugin を有効にしてコミットします。
+使う plugin はプロジェクトごとに環境を分けて選びます。1つの環境で複数のプロジェクトを使い分けたい場合は、setup script では marketplace の登録だけを行い、作業対象のリポジトリの `.claude/settings.json` で使う plugin を有効にしてコミットします。
 
 ```json
 {
@@ -55,7 +53,7 @@ setup script の結果は環境単位でキャッシュされ、その環境の�
 }
 ```
 
-複数のリポジトリを追加したセッションでも、各リポジトリの `.claude/settings.json` の `enabledPlugins` は読み込まれ、marketplace 内の plugin は導入しなくても有効になります。他の人と共有するリポジトリにコミットすると、marketplace を登録していない人の環境では plugin が見つからないエラーが表示されます。
+marketplace 内の plugin は、導入しなくても `enabledPlugins` で有効になります。他の人と共有するリポジトリにコミットすると、marketplace を登録していない人の環境では plugin が見つからないエラーが表示されます。
 
 ### gh skill
 
