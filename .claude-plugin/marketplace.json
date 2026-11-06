@@ -20,7 +20,8 @@
         "./skills/pr-resume",
         "./skills/pr-merge",
         "./skills/pr-monitor",
-        "./skills/cloud-handoff"
+        "./skills/cloud-handoff",
+        "./skills/pr-resume-cloud"
       ]
     },
     {

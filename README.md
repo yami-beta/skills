@@ -12,7 +12,7 @@ Claude Code では plugin として、Codex など他のエージェントでは
 
 | Plugin | Skill |
 | --- | --- |
-| `yami-beta-skills` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
+| `yami-beta-skills` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`, `pr-resume-cloud` |
 | `software-factory` | `setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
 
 `software-factory` は `commit` と `pr-create` を使うため `yami-beta-skills` に依存しており、導入すると `yami-beta-skills` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
@@ -62,17 +62,21 @@ setup script の結果は環境単位でキャッシュされ、その環境の�
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
 - **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
-- **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`。
+- **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`, `pr-resume-cloud`。
 
 ```sh
 # issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
-gh skill install yami-beta/skills setup-workflow plan-requirement pick-task \
-  implement-task create-follow-up sync-issues --agent claude-code
+for s in setup-workflow plan-requirement pick-task implement-task create-follow-up sync-issues; do
+  gh skill install yami-beta/skills "$s" --agent claude-code
+done
 
 # 汎用 skill を user scope へ
-gh skill install yami-beta/skills commit pr-create pr-resume pr-merge pr-monitor cloud-handoff \
-  --agent claude-code --scope user
+for s in commit pr-create pr-resume pr-merge pr-monitor cloud-handoff pr-resume-cloud; do
+  gh skill install yami-beta/skills "$s" --agent claude-code --scope user
+done
 ```
+
+`gh skill install` が一度に受け付ける skill は1つのため、skill ごとに実行します。
 
 `--agent` には利用するエージェントの識別子を指定します。Codex は `codex`、Cursor は `cursor`、Gemini CLI は `gemini-cli` に置き換えます。利用可能な値は `gh skill install --help` で確認できます。
 
@@ -116,7 +120,7 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 | --- | --- |
 | [`commit`](skills/commit/SKILL.md) | 変更を確認し、Conventional Commits 形式の commit を作成する |
 | [`pr-create`](skills/pr-create/SKILL.md) | 未コミットの変更を commit し、push して Pull Request を作成する |
-| [`pr-resume`](skills/pr-resume/SKILL.md) | 自動実装などが作成した既存 PR を引き継ぎ、残作業の実装・修正・検証を行う。クラウドセッションへの委譲にも対応する |
+| [`pr-resume`](skills/pr-resume/SKILL.md) | 自動実装などが作成した既存 PR を引き継ぎ、残作業の実装・修正・検証を現在のセッションで行う |
 | [`pr-merge`](skills/pr-merge/SKILL.md) | CI とレビュー状態を確認し、リポジトリの慣習に応じた方法で merge する |
 | [`pr-monitor`](skills/pr-monitor/SKILL.md) | CI チェックの完了を監視し、結果を報告する |
 
@@ -126,7 +130,17 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 
 利用例: `$cloud-handoff この作業をクラウドに引き継いで、残りの実装とテスト、PR 作成まで進めてください`。実行せず準備だけ行う場合は、その旨を指定します。
 
-既存 PR の作業をクラウドで進める場合は `pr-resume` を使います。ローカルで PR を特定し、PR の head branch を開始 branch に指定してクラウドセッションを起動します。クラウド側に plugin がなくても作業できる引き継ぎ文を渡し、追加コミットは環境既定の branch ではなく PR の head branch へ反映させます。利用例: `$pr-resume <PR URL> クラウドで引き継いで、レビュー指摘を修正して PR を更新してください`。
+既存 PR の作業をクラウドで進める場合は [`pr-resume-cloud`](skills/pr-resume-cloud/SKILL.md) をローカルのセッションから使います。PR の head branch を開始 branch に指定してクラウドセッションを起動し、残作業の把握と対応はクラウド側に任せます。クラウド側に plugin がなくても作業できる引き継ぎ文を渡し、追加コミットは環境既定の branch ではなく PR の head branch へ反映させます。利用例: `$pr-resume-cloud 123`、`$pr-resume-cloud <PR URL> レビュー指摘を修正して PR を更新してください`。現在のセッションで作業する場合は `pr-resume` を使います。
+
+Claude Code のクラウド環境は skill では選ばず、CLI の既定環境を使います。リポジトリごとに環境を固定する場合は、作業対象のリポジトリの `.claude/settings.json` に環境 ID を設定します。user settings の値（`/remote-env` で選んだ環境）より優先されます。環境 ID は、`/remote-env` で環境を選んだ後に `~/.claude/settings.json` の同じキーから確認できます。
+
+```json
+{
+  "remote": {
+    "defaultEnvironmentId": "env_..."
+  }
+}
+```
 
 ## Issue-driven development workflow
 
