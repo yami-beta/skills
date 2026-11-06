@@ -116,7 +116,7 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 | --- | --- |
 | [`commit`](skills/commit/SKILL.md) | 変更を確認し、Conventional Commits 形式の commit を作成する |
 | [`pr-create`](skills/pr-create/SKILL.md) | 未コミットの変更を commit し、push して Pull Request を作成する |
-| [`pr-resume`](skills/pr-resume/SKILL.md) | 自動実装などが作成した既存 PR を引き継ぎ、残作業の実装・修正・検証を行う |
+| [`pr-resume`](skills/pr-resume/SKILL.md) | 自動実装などが作成した既存 PR を引き継ぎ、残作業の実装・修正・検証を行う。クラウドセッションへの委譲にも対応する |
 | [`pr-merge`](skills/pr-merge/SKILL.md) | CI とレビュー状態を確認し、リポジトリの慣習に応じた方法で merge する |
 | [`pr-monitor`](skills/pr-monitor/SKILL.md) | CI チェックの完了を監視し、結果を報告する |
 
@@ -125,6 +125,8 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 [`cloud-handoff`](skills/cloud-handoff/SKILL.md) は、ローカルで進めている作業のコード・判断・残作業・検証結果を、Claude Code や Codex のクラウドセッションへ引き継ぎます。利用可能な正式機能で受け渡し、直接起動できない環境では引き継ぎ文と手動操作を返します。
 
 利用例: `$cloud-handoff この作業をクラウドに引き継いで、残りの実装とテスト、PR 作成まで進めてください`。実行せず準備だけ行う場合は、その旨を指定します。
+
+既存 PR の作業をクラウドで進める場合は `pr-resume` を使います。ローカルで PR を特定し、PR の head branch を開始 branch に指定してクラウドセッションを起動します。クラウド側に plugin がなくても作業できる引き継ぎ文を渡し、追加コミットは環境既定の branch ではなく PR の head branch へ反映させます。利用例: `$pr-resume <PR URL> クラウドで引き継いで、レビュー指摘を修正して PR を更新してください`。
 
 ## Issue-driven development workflow
 
