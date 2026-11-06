@@ -130,7 +130,7 @@ skill は単体で完結させ、利用者側の `CLAUDE.md` や `AGENTS.md` な
 
 利用例: `$cloud-handoff この作業をクラウドに引き継いで、残りの実装とテスト、PR 作成まで進めてください`。実行せず準備だけ行う場合は、その旨を指定します。
 
-既存 PR の作業をクラウドで進める場合は [`pr-resume-cloud`](skills/pr-resume-cloud/SKILL.md) をローカルのセッションから使います。PR の head branch を開始 branch に指定してクラウドセッションを起動し、残作業の把握と対応はクラウド側に任せます。クラウド側に plugin がなくても作業できる引き継ぎ文を渡し、追加コミットは環境既定の branch ではなく PR の head branch へ反映させます。利用例: `$pr-resume-cloud 123`、`$pr-resume-cloud <PR URL> レビュー指摘を修正して PR を更新してください`。現在のセッションで作業する場合は `pr-resume` を使います。
+既存 PR の作業をクラウドで進める場合は [`pr-resume-cloud`](skills/pr-resume-cloud/SKILL.md) をローカルのセッション内で呼び出します。実行環境に組み込みの機能でクラウドセッションを起動し、残作業の把握と対応はクラウド側に任せます。クラウド側では skill を使わずに作業できる引き継ぎ文を渡し、作業開始前に PR の head branch へ切り替えさせ、追加コミットもその branch へ反映させます。利用例: `$pr-resume-cloud 123`、`$pr-resume-cloud <PR URL> レビュー指摘を修正して PR を更新してください`。現在のセッションで作業する場合は `pr-resume` を使います。
 
 Claude Code のクラウド環境は skill では選ばず、CLI の既定環境を使います。リポジトリごとに環境を固定する場合は、作業対象のリポジトリの `.claude/settings.json` に環境 ID を設定します。user settings の値（`/remote-env` で選んだ環境）より優先されます。環境 ID は、`/remote-env` で環境を選んだ後に `~/.claude/settings.json` の同じキーから確認できます。
 
