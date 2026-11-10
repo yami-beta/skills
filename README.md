@@ -207,7 +207,7 @@ task:        blocked | ready -> in-progress -> review -> closed
 
 `implement-task` は task を閉じる PR を作り、変更概要・検証結果を PR 本文に記録して終了します。`workflow:review` は PR 作成済みの表示です。担当者は PR 対応中も保持します。
 
-レビュー、CI 失敗への修正、マージは人間が確認し、必要に応じてエージェントへ依頼します。既存 PR の実装作業を引き継ぐ場合は `pr-resume` を使います。例えば `$pr-resume <PR URL> レビュー指摘と CI 失敗を修正して PR を更新してください` と依頼します。PR の継続監視や自動修正は開始しません。マージで task が閉じた後、`sync-issues` が後続 task の着手可否を更新します。親要件は設計の「分割」と全 sub-issue の対応を確認し、作成漏れがなく全件 completed の場合だけ閉じます。
+レビュー、CI 失敗への修正、マージは人間が確認し、必要に応じてエージェントへ依頼します。既存 PR の実装作業を引き継ぐ場合は `pr-resume` を使います。例えば `$pr-resume <PR URL> レビュー指摘と CI 失敗を修正して PR を更新してください` と依頼します。Claude Code デスクトップアプリなど対応する環境では、引き継いだ PR の自動修正（Auto-fix）を現在のセッションで有効にします。マージで task が閉じた後、`sync-issues` が後続 task の着手可否を更新します。親要件は設計の「分割」と全 sub-issue の対応を確認し、作成漏れがなく全件 completed の場合だけ閉じます。
 
 設計は通常の `## 設計` 見出しで記録します。子タスク一覧と依存関係は GitHub の sub-issue・dependency に任せ、本文へ別の索引を作りません。follow-up の重複は問題箇所、期待する成果、関連 Issue/PR から確認します。
 
