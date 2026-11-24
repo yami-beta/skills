@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Task Sessions"
+  short_description: "Delegate tasks and steer their cloud sessions"
+  default_prompt: "Use $manage-task-sessions to delegate this requirement’s task or PR to a cloud session and route follow-ups to it."

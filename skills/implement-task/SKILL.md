@@ -36,7 +36,8 @@ task 専用 branch または worktree で、Issue の成果と受入条件を満
 完了には、以下が必要となる。
 
 - task の変更を commit・push し、適用される attribution を実際のコミット本文で確認する。既存の同名 branch を上書きしない。
-- PR 本文に変更概要、必要な設計判断、検証結果、リスク・未検証事項、同じ repository の task を閉じる `Closes #<task-number>` を記載する。
+- PR 本文の冒頭で、この変更で何がどう変わるかを説明する。差分の意図を理解するために必要な設計判断やリスクを添え、同じ repository の task を閉じる `Closes #<task-number>` を記載する。
+- Checks で確認できる合否やテスト件数の転載は省く。検証については、レビュー判断に影響するときに、受入条件のどの挙動をどの経路で確認したか、どこが未確認かを書く。
 - 作成した PR を再取得して attribution と close 対象を確認し、task を単一の `workflow:review` に整合する。Issue は merge 前に閉じず、担当者を保持する。
 
 範囲外の独立した改善は根拠とともに保持し、PR と task の状態を確認した後、関連候補をまとめて最大3件まで `create-follow-up` へ渡す。候補なしなら呼び出さず、重複・作成失敗でも完成した PR を取り消さない。

@@ -13,7 +13,7 @@ Claude Code では plugin として、Codex など他のエージェントでは
 | Plugin | Skill |
 | --- | --- |
 | `yami-beta-skills` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
-| `software-factory` | `setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
+| `software-factory` | `setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
 
 `software-factory` は `commit` と `pr-create` を使うため `yami-beta-skills` に依存しており、導入すると `yami-beta-skills` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
 
@@ -59,12 +59,12 @@ marketplace 内の plugin は、導入しなくても `enabledPlugins` で有効
 
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
-- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
+- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
 - **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`。
 
 ```sh
 # issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
-for s in setup-workflow plan-requirement pick-task implement-task create-follow-up sync-issues; do
+for s in setup-workflow plan-requirement manage-task-sessions pick-task implement-task create-follow-up sync-issues; do
   gh skill install yami-beta/skills "$s" --agent claude-code
 done
 
@@ -155,10 +155,19 @@ claude --cloud "PR #123 を引き継いで、レビュー指摘を修正して P
 | --- | --- |
 | [`setup-workflow`](skills/setup-workflow/SKILL.md) | workflow が使う固定 label を repository に作成・検証する |
 | [`plan-requirement`](skills/plan-requirement/SKILL.md) | 要件を整理して調査・設計・実装計画を親 Issue に追記し、承認後に依存関係付きの task sub-issue へ分割する |
+| [`manage-task-sessions`](skills/manage-task-sessions/SKILL.md) | 要件の管理セッションから task・PR の作業をクラウドに依頼し、追加指示を同じ子セッションへ送る |
 | [`pick-task`](skills/pick-task/SKILL.md) | 定期実行向けに、着手可能な task を1件選択して確保する |
 | [`implement-task`](skills/implement-task/SKILL.md) | 指定された task を実装して Pull Request を作る |
 | [`create-follow-up`](skills/create-follow-up/SKILL.md) | task 範囲外で見つけた改善を重複のない backlog Issue として提案する |
 | [`sync-issues`](skills/sync-issues/SKILL.md) | native metadata から workflow label を整合し、後続 task の解放と要件 Issue の完了を判定する |
+
+### 要件ごとの管理セッション
+
+親 Issue を設計した会話で `$manage-task-sessions task #123 の実装をクラウドに依頼して` と頼みます。定期実行が作った既存 PR も `$manage-task-sessions PR #456 のレビュー指摘への対応をクラウドに依頼して` と引き継げます。その後は同じ会話で「#456 の互換性も確認して」と頼むと、担当の子セッションに追加指示が届きます。
+
+Codex デスクトップで「task #123 の実装用に Codex Cloud の子チャットを作って」と指定すると、対象のクラウド環境で子を作り、追加指示も同じチャットに送ります。子の環境には対象 repository と担当スキルを用意します。
+
+実行先を省略すると、認証済みの Claude Code CLI を使います。上記の [Cloud sessions](#cloud-sessions) の設定で、子が実装を担当する環境では `software-factory@yami-beta` も有効にしてください。
 
 ### Skill design
 
