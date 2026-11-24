@@ -221,6 +221,8 @@ follow-up の作成失敗や重複は、完成した source Pull Request を取�
 
 ### Trigger patterns
 
+特定の open Issue の label を修復する場合は、`sync-issues` にその Issue を指定します。親や依存先は判定に必要な範囲で参照し、更新対象は指定した1件に限ります。
+
 定期実行では `sync-issues` → `pick-task` → `implement-task` の順に実行し、最大1件の task を扱います。候補は `kind:task`、`workflow:ready`、`automation:enabled` を持つ open Issue に限定します。
 
 イベント駆動では、承認済みの task 分割後に依存のない task を `implement-task` に渡します。task が閉じたら `sync-issues` の event mode で後続 task と親要件を再評価します。どちらも repository の共通の排他枠で直列実行します。

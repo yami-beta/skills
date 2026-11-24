@@ -1,6 +1,6 @@
 ---
 name: sync-issues
-description: Reconcile managed GitHub issue states and close completed requirements. Use after a task closes or to reconcile the managed backlog.
+description: Reconcile managed GitHub issue states and close completed requirements. Use after a task closes, to repair a specified issue, or to reconcile the managed backlog.
 ---
 
 # Reconcile Issue State
@@ -10,6 +10,7 @@ GitHub 上の事実から管理対象 Issue の `kind:*` と `workflow:*` を整
 ## Scope and prerequisites
 
 - **Event**: closed になった source task が指定された場合、その native `blocking` にある open task と native parent requirement が対象。PR merge だけでは完了とせず、Issue が実際に closed であることを確認する。
+- **指定 Issue の修復**: open な管理対象 Issue が指定された場合、更新対象はその1件とする。親・依存・sub-issue・PR は判定に必要な範囲で参照する。label 修復だけの依頼で親の close 条件を満たした場合は、その旨を報告して open のままにする。
 - **Reconciliation**: source がない場合、`kind:*` / `workflow:*` を持つ全 open Issue と、その親・sub-issue が対象。親のない `kind:task` も含める。
 
 対象 repository に全固定 label（`kind:requirement`、`kind:task`、`workflow:backlog`、`workflow:needs-input`、`workflow:ready`、`workflow:blocked`、`workflow:in-progress`、`workflow:review`、`automation:enabled`、`origin:agent`）が必要。欠落時は Issue を変更せず `setup-workflow` が必要なことを返す。呼び出し元が repository 単位で定期・イベント・手動実行を直列化する。排他を確認できない自動実行は更新せず、手動実行も他の実行と重ねない。
@@ -40,6 +41,7 @@ native parent があれば task、parent がなく sub-issue があれば requir
 | 事実 | workflow / 操作 |
 | --- | --- |
 | 未決事項がある、または既存 sub-issue と計画の対応に余分・曖昧さがある | `needs-input` |
+| completed 以外の理由で閉じた sub-issue がある | `needs-input` |
 | 承認済み計画の未作成分だけが残り、分割処理の継続中と確認できる | `in-progress` を保持 |
 | 既存 sub-issue があるが計画の成果に欠落があり、分割処理の継続中と確認できない | `needs-input` |
 | 計画と対応する sub-issue があり、1件以上 open | `in-progress` |

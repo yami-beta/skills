@@ -37,7 +37,7 @@ Issue と関連するコード・tests・規約を調べ、現在の挙動と期
 
 [assets/task-issue.md](assets/task-issue.md) に沿って、挙動、関連する親の決定、受入条件、検証方法を書く。受入条件は新たな成果と維持すべき性質の両方を含められ、第三者が検証できることを基準にする。詳細な受入条件は task に置き、親の合意を漏れなく反映する。
 
-既存の全 sub-issue と「分割」の成果を照合し、再実行では未作成分だけを補う。対応が曖昧なら重複作成しない。task は同じ repository の native sub-issue とし、依存には native `blocked by` を使う。本文を依存関係の代用にせず、別の task 番号索引も作らない。
+追加作成の前に、既存の全 sub-issue と「分割」の成果を照合する。対応が曖昧なもの、計画外のもの、completed 以外の理由で閉じたものがあれば、該当 Issue と食い違いを示し、扱いを利用者に確認する。対応が確定したら既存 task を再利用し、未作成の成果だけを補う。task は同じ repository の native sub-issue とし、依存には native `blocked by` を使う。本文を依存関係の代用にせず、別の task 番号索引も作らない。
 
 ## State and update contract
 
