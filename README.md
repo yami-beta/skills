@@ -21,7 +21,7 @@ Claude Code では plugin として、Codex など他のエージェントでは
 claude plugin marketplace add yami-beta/skills
 claude plugin install yami-beta-skills@yami-beta
 
-# issue-driven workflow を project scope へ（対象リポジトリ内で実行）
+# Software factory を project scope へ（対象リポジトリ内で実行）
 claude plugin install software-factory@yami-beta --scope project
 ```
 
@@ -59,11 +59,11 @@ marketplace 内の plugin は、導入しなくても `enabledPlugins` で有効
 
 [GitHub CLI](https://cli.github.com/) の `gh skill`（preview）で導入します。skill によって適した scope が異なります。
 
-- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする issue-driven development workflow の skill（`setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
+- **project scope**（`--scope` の既定値）: GitHub の issue や label を前提とする Software factory の skill（`setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）。リポジトリ固有の運用に依存するため、対象リポジトリの中で導入します。
 - **user scope**: リポジトリ固有の前提を持たない `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff`。
 
 ```sh
-# issue-driven workflow の skill を project scope へ（対象リポジトリ内で実行）
+# Software factory の skill を project scope へ（対象リポジトリ内で実行）
 for s in setup-workflow plan-requirement manage-task-sessions pick-task implement-task create-follow-up sync-issues; do
   gh skill install yami-beta/skills "$s" --agent claude-code
 done
@@ -145,7 +145,7 @@ claude --cloud "PR #123 を引き継いで、レビュー指摘を修正して P
 }
 ```
 
-## Issue-driven development workflow
+## Software factory
 
 既存の要件 Issue、または実装中に agent が提案した follow-up Issue を起点に、以下のスキルを順に組み合わせると、要件の整理から実装 Pull Request までを GitHub Issue の依存関係付きで進行できます。
 
