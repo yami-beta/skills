@@ -14,8 +14,9 @@ Claude Code では plugin として、Codex など他のエージェントでは
 | --- | --- |
 | `yami-beta-skills` | `commit`, `pr-create`, `pr-resume`, `pr-merge`, `pr-monitor`, `cloud-handoff` |
 | `software-factory` | `setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues` |
+| `task-board` | なし（管理セッションの管理ボードを表示する mod。`/task-board` とツール `update_board` を追加する） |
 
-`software-factory` は `commit` と `pr-create` を使うため `yami-beta-skills` に依存しており、導入すると `yami-beta-skills` も導入されます。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
+`software-factory` は `commit` と `pr-create` を使うため `yami-beta-skills` に、管理セッションの管理ボードを表示するため `task-board` に依存しており、導入するとどちらも導入されます。`task-board` は hooks モジュールだけの plugin（mod）で、`plugins/task-board/` に置いています。リポジトリ固有の運用に依存するため、`--scope project` で対象リポジトリに導入します。
 
 ```sh
 claude plugin marketplace add yami-beta/skills
@@ -97,6 +98,8 @@ done
 └── skills/<skill-name>   # project scope の skill の symlink（このリポジトリ自身で使う）
 .claude-plugin/
 └── marketplace.json      # Claude Code plugin marketplace と各 plugin の skill 構成
+plugins/
+└── task-board/           # 管理ボードの mod（hooks モジュールだけの plugin）
 skills/
 └── <skill-name>/
     ├── SKILL.md          # 必須: YAML frontmatter と指示
@@ -299,6 +302,8 @@ rg -n 'Depends[ ]on' skills
 rg -n 'Depends[ ]on' README.md
 gh skill publish --dry-run
 claude plugin validate .
+claude plugin validate plugins/task-board
+claude plugin test plugins/task-board
 ```
 
 最初の2つの検索は旧 workflow 方針が残っていないことを確認し、結果が0件になることを期待します。3つ目の検索結果はこの移行手順内の例示だけであることを確認します。
