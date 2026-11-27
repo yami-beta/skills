@@ -82,14 +82,25 @@ function engine(on: On, store: Record<string, unknown> = {}): Calls {
       return { value: { content: [{ type: 'text', text: 'session not found' }], isError: true } }
     }
     if (e.tool === 'get_session') {
-      return { value: text({ id: CHILD, status_bucket: 'review_ready', post_turn_summary: { recent_action: 'PR #50 を作成した' } }) }
+      // claude-code-remote の実際の応答と同じく ccr で包み、要約は task_summary に入る。
+      return {
+        value: text({
+          ccr: { id: CHILD, status_bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', task_summary: 'PR #50 を作成した' },
+        }),
+      }
     }
     return {
       value: text({
-        data: [
-          { created_at: '2026-11-27T08:50:00Z', result: { result: '古い返信' } },
-          { created_at: '2026-11-27T09:01:00Z', result: { result: 'PR #50 を作成しました。検証はすべて通っています。' } },
-        ],
+        ccr: {
+          data: [
+            { created_at: '2026-11-27T08:50:00Z', result: { internal_anthropic_catchall: { result: '古い返信' } } },
+            {
+              created_at: '2026-11-27T09:01:00Z',
+              result: { internal_anthropic_catchall: { result: 'PR #50 を作成しました。検証はすべて通っています。' } },
+            },
+          ],
+          has_more: true,
+        },
       }),
     }
   })
@@ -151,6 +162,7 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
     const ui = await $.ui.mount({ ...PANE, surface })
     expect(await ui.find({ type: 'Text', text: /状態: レビュー待ち/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /最終取得 11\/27/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'PR #50 を作成した' })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /最新の返信.*PR #50 を作成しました/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Codex の子は自動取得しません/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '担当: なし' })).toBeDefined()
