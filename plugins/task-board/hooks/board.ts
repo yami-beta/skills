@@ -396,3 +396,13 @@ export function boardCounts(board: Board, live: Record<string, ChildLive>): Boar
 export function doneText(c: BoardCounts): string {
   return `task ${c.total} 件中 ${c.done} 件完了`
 }
+
+const WIDE_COLUMNS = 100
+
+/** パネルの幅から、task のカードを何列に並べるかと 1 枚の幅を決める。目安 100 列以上で 2 列。 */
+export function cardLayout(bodyColumns: number | undefined): { columns: 1 | 2; width?: number } {
+  const cols = bodyColumns ?? 0
+  if (cols < WIDE_COLUMNS) return { columns: 1 }
+  // パネルの外側の余白（左右 1 ずつ）とカードの間（2）を引いて 2 等分する。
+  return { columns: 2, width: Math.floor((cols - 2 - 2) / 2) }
+}

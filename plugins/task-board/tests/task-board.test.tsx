@@ -166,13 +166,19 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
     expect(await ui.find({ type: 'Text', text: /対応待ち/ })).toBeUndefined()
     // 状態は色付きのラベルで、意味の色を揃える。
     expect((await ui.find({ type: 'Text', text: /^ レビュー待ち $/ }))?.props.backgroundColor).toBe('success')
-    expect((await ui.find({ type: 'Text', text: /^ PR open $/ }))?.props.backgroundColor).toBe('success')
+    expect((await ui.find({ type: 'Text', text: /^ open $/ }))?.props.backgroundColor).toBe('success')
     expect((await ui.find({ type: 'Text', text: /^ review $/ }))?.props.backgroundColor).toBe('success')
     expect((await ui.find({ type: 'Text', text: /^ in-progress $/ }))?.props.backgroundColor).toBe('suggestion')
     expect((await ui.find({ type: 'Text', text: /^ closed $/ }))?.props.backgroundColor).toBe('inactive')
-    expect(await ui.find({ type: 'Text', text: /最終取得 11\/27.*PR #50 を作成した/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Codex の子は自動取得しません/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '· 担当: なし' })).toBeDefined()
+    // カードの情報は短い見出しと値で並べる。
+    const fields = (await ui.findAll({ type: 'Text' })).map(x => x.text)
+    expect(fields).toContain('最終取得')
+    expect(fields.some(x => /^11\/27 /.test(x))).toBe(true)
+    expect(fields).toContain('PR #50 を作成した')
+    expect(fields).toContain(`Claude Code ${CHILD}`)
+    expect(fields).toContain('自動取得なし（Codex）')
+    // #49 と #51 の PR、#51 の担当。
+    expect(fields.filter(x => x === 'なし').length).toBe(3)
     // 最新の返信と入力欄は詳細を開くまで出さない。
     expect(await ui.find({ type: 'Text', text: /最新の返信/ })).toBeUndefined()
     expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeUndefined()
@@ -183,7 +189,8 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
     expect(await ui.find({ type: 'Button', key: 'details-51' })).toBeUndefined()
 
     await ui.press({ key: 'details-48' })
-    expect(await ui.find({ type: 'Text', text: /最新の返信.*PR #50 を作成しました/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^最新の返信（11\/27 / })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: 'PR #50 を作成しました。検証はすべて通っています。' })).toBeDefined()
     expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeDefined()
     expect((await ui.find({ type: 'Button', key: 'details-48' }))?.props.label).toBe('詳細を閉じる')
     expect(await ui.find({ type: 'Input', key: 'draft-49' })).toBeUndefined()
@@ -201,6 +208,39 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
   // 60 秒ごとにも取り直す。
   await calls.clock.advance(60_000)
   expect(calls.mcp.length).toBe(8)
+})
+
+test('パネルが広いときは task のカードを 2 列、狭いときは 1 列に並べる', async ($, on) => {
+  const calls = engine(on)
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+
+  const cases = [
+    { surface: 'desktop', bodyColumns: 140, direction: 'row', width: 68 },
+    { surface: 'terminal', bodyColumns: 120, direction: 'row', width: 58 },
+    { surface: 'desktop', bodyColumns: 80, direction: 'column', width: undefined },
+    { surface: 'terminal', bodyColumns: 40, direction: 'column', width: undefined },
+  ] as const
+  for (const c of cases) {
+    const ui = await $.ui.mount({ ...PANE, surface: c.surface, props: { ...PANE.props, bodyColumns: c.bodyColumns } })
+    const cards = await ui.find({ type: 'Box', key: 'cards' })
+    expect(cards?.props.flexDirection).toBe(c.direction)
+    for (const n of [48, 49, 51]) {
+      const card = await ui.find({ type: 'Box', key: `task-${n}` })
+      expect(card?.props.width).toBe(c.width)
+      // カードは枠と内側の余白を持ち、区画の間を 1 行空ける。
+      expect(card?.props.borderStyle).toBe('round')
+      expect(card?.props.paddingX).toBe(2)
+      expect(card?.props.paddingY).toBe(1)
+      expect(card?.props.gap).toBe(1)
+    }
+    // 要約も 1 枚のカードにする。
+    expect((await ui.find({ type: 'Box', key: 'summary' }))?.props.borderStyle).toBe('round')
+    // 狭い幅でも送信手段は残る。
+    expect(await ui.find({ type: 'Button', key: 'quick-48' })).toBeDefined()
+    await ui.unmount()
+  }
 })
 
 test('形の違う入力は理由を添えて断る', async ($, on) => {
