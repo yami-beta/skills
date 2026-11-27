@@ -206,7 +206,11 @@ export function instructionText(board: Board, task: BoardTask, child: BoardChild
 }
 
 /** /task-board の返答。モバイルアプリにはこの文字列がそのまま届く。 */
-export function summaryText(board: Board | null, live: Record<string, ChildLive>): string {
+export function summaryText(
+  board: Board | null,
+  live: Record<string, ChildLive>,
+  sent: Record<string, number> = {},
+): string {
   if (!board) {
     return [
       '**管理ボード**',
@@ -236,7 +240,10 @@ export function summaryText(board: Board | null, live: Record<string, ChildLive>
     const L = live[c.id] ?? {}
     lines.push(`  - 担当: Claude Code ${c.id} · 状態 ${bucketLabel(L.bucket)}（最終取得 ${fmtTime(L.fetchedAt)}）`)
     if (L.error) lines.push(`  - ${L.error}`)
-    if (L.reply) lines.push(`  - 最新の返信: ${oneLine(L.reply, REPLY_HEAD)}`)
+    if (L.reply) {
+      const mark = isReplyBeforeSent(L.replyAt, sent[c.id]) ? `（指示 ${fmtTime(sent[c.id])} より前の返信）` : ''
+      lines.push(`  - 最新の返信${mark}: ${plainLine(L.reply, REPLY_HEAD)}`)
+    }
   }
   lines.push(
     '',
@@ -405,4 +412,39 @@ export function cardLayout(bodyColumns: number | undefined): { columns: 1 | 2; w
   if (cols < WIDE_COLUMNS) return { columns: 1 }
   // パネルの外側の余白（左右 1 ずつ）とカードの間（2）を引いて 2 等分する。
   return { columns: 2, width: Math.floor((cols - 2 - 2) / 2) }
+}
+
+/**
+ * Markdown を先頭 maxLines 行で切る。空行の連続は 1 行に詰め、切った位置で
+ * コードブロックが開いたままなら閉じる。
+ */
+export function cutMarkdown(text: string, maxLines: number): { text: string; isCut: boolean; totalLines: number } {
+  const lines = text
+    .replace(/\r\n?/g, '\n')
+    .trim()
+    .split('\n')
+    .filter((line, i, all) => !(line.trim() === '' && i > 0 && (all[i - 1] ?? '').trim() === ''))
+  const head = lines.slice(0, maxLines)
+  const fences = head.filter(l => l.trimStart().startsWith('```')).length
+  if (fences % 2 === 1) head.push('```')
+  return { text: head.join('\n'), isCut: lines.length > maxLines, totalLines: lines.length }
+}
+
+/** Markdown の記号を取り除いて 1 行の冒頭にする。/task-board の一覧で使う。 */
+export function plainLine(text: string, max: number): string {
+  const plain = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*(?:[-*+]|\d+\.)\s+/gm, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|`)/g, '')
+  return oneLine(plain, max)
+}
+
+/** 表示中の返信が、最後に指示を送った時刻より前のものか。返信の時刻が読めなければ前とみなす。 */
+export function isReplyBeforeSent(replyAt: string | undefined, sentAt: number | undefined): boolean {
+  if (sentAt === undefined) return false
+  const at = replyAt ? Date.parse(replyAt) : NaN
+  return Number.isNaN(at) || at < sentAt
 }

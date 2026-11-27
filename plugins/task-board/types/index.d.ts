@@ -65,6 +65,8 @@ declare module 'claude-code' {
       pending: Pending
       /** 行ごとの詳細の開閉。task 番号をキーにする。 */
       expanded: Record<string, boolean>
+      /** 子の ID ごとに、最後に指示を送った時刻（ミリ秒）。 */
+      sent: Record<string, number>
       notice: string
       refreshing: boolean
     }

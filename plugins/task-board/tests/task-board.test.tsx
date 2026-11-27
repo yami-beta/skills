@@ -53,7 +53,16 @@ const BOARD = {
   checkedAt: '2026-11-27T09:00:00Z',
 }
 
-type Calls = { opened: number; submitted: string[]; mcp: string[]; fail: boolean; bucket: string; clock: MockClock }
+type Calls = {
+  opened: number
+  submitted: string[]
+  mcp: string[]
+  fail: boolean
+  bucket: string
+  reply: string
+  replyAt: string
+  clock: MockClock
+}
 
 function text(value: unknown) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }
@@ -63,7 +72,16 @@ function text(value: unknown) {
 function engine(on: On, store: Record<string, unknown> = {}): Calls {
   mock.store(on, store)
   const clock = mock.clock(on, { now: Date.UTC(2026, 10, 27, 9, 5) })
-  const calls: Calls = { opened: 0, submitted: [], mcp: [], fail: false, bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', clock }
+  const calls: Calls = {
+    opened: 0,
+    submitted: [],
+    mcp: [],
+    fail: false,
+    bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY',
+    reply: 'PR #50 を作成しました。検証はすべて通っています。',
+    replyAt: '2026-11-27T09:01:00Z',
+    clock,
+  }
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__task-board__${e.name}` } }))
   on('session.id', () => ({ value: SESSION }))
@@ -94,10 +112,7 @@ function engine(on: On, store: Record<string, unknown> = {}): Calls {
         ccr: {
           data: [
             { created_at: '2026-11-27T08:50:00Z', result: { internal_anthropic_catchall: { result: '古い返信' } } },
-            {
-              created_at: '2026-11-27T09:01:00Z',
-              result: { internal_anthropic_catchall: { result: 'PR #50 を作成しました。検証はすべて通っています。' } },
-            },
+            { created_at: calls.replyAt, result: { internal_anthropic_catchall: { result: calls.reply } } },
           ],
           has_more: true,
         },
@@ -190,7 +205,7 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
 
     await ui.press({ key: 'details-48' })
     expect(await ui.find({ type: 'Text', text: /^最新の返信（11\/27 / })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'PR #50 を作成しました。検証はすべて通っています。' })).toBeDefined()
+    expect(await ui.find({ type: 'Markdown', text: 'PR #50 を作成しました。検証はすべて通っています。' })).toBeDefined()
     expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeDefined()
     expect((await ui.find({ type: 'Button', key: 'details-48' }))?.props.label).toBe('詳細を閉じる')
     expect(await ui.find({ type: 'Input', key: 'draft-49' })).toBeUndefined()
@@ -335,6 +350,87 @@ test('「状況を報告してもらう」は確認なしで、入力欄は確�
   await ui.press({ key: 'cancel-48' })
   expect(calls.submitted.length).toBe(2)
   expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeDefined()
+  await ui.unmount()
+})
+
+const MARKDOWN_REPLY = [
+  '**変更したこと**',
+  '',
+  '- **カード**: 要約と task をカードにしました。',
+  '- **2 列表示**: 100 列以上で 2 列にします。',
+  '',
+  '',
+  '**検証結果**',
+  '- validate: エラーなし',
+  '- test: 10 件通過',
+  '',
+  '**未確認**',
+  '- 実機表示',
+  '- 余白の見え方',
+].join('\n')
+
+test('詳細の返信は Markdown のまま先頭 10 行で切り、一覧では記号を除いた 1 行にする', async ($, on) => {
+  const calls = engine(on)
+  calls.reply = MARKDOWN_REPLY
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    await ui.press({ key: 'details-48' })
+    const md = await ui.find({ type: 'Markdown' })
+    // 空行の連続は 1 行に詰めて 12 行、そのうち先頭 10 行を改行ごと描く。
+    expect(md?.props.text).toBe(MARKDOWN_REPLY.replace('\n\n\n', '\n\n').split('\n').slice(0, 10).join('\n'))
+    expect(await ui.find({ type: 'Text', text: /続きがあります（全 12 行のうち先頭 10 行）/ })).toBeDefined()
+    await ui.press({ key: 'details-48' })
+    await ui.unmount()
+  }
+
+  const out = await runCommand($)
+  expect(String(out.text)).toContain(
+    '  - 最新の返信: 変更したこと カード: 要約と task をカードにしました。 2 列表示: 100 列以上で 2 列にします。',
+  )
+  const replyLine = String(out.text).split('\n').find(l => l.startsWith('  - 最新の返信'))
+  expect(replyLine).not.toMatch(/\*\*|^\s*- \*/)
+})
+
+test('指示を送ったあとは 30 秒後と 90 秒後に取り直し、それより前の返信には印を付ける', async ($, on) => {
+  const calls = engine(on)
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+  expect(calls.mcp.length).toBe(2)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'details-48' })
+  expect(await ui.find({ type: 'Text', text: /より前の返信/ })).toBeUndefined()
+
+  // 09:05 に送る。表示中の返信は 09:01 なので印が付く。
+  await ui.press({ key: 'quick-48' })
+  expect(calls.submitted.length).toBe(1)
+  const mark = await ui.find({ type: 'Text', text: /指示（11\/27 \d\d:05）より前の返信/ })
+  expect(mark?.props.backgroundColor).toBe('warning')
+  expect(String((await runCommand($)).text)).toMatch(/最新の返信（指示 11\/27 \d\d:05 より前の返信）: PR #50/)
+  const afterCommand = calls.mcp.length
+
+  // 30 秒後に担当の子だけを取り直す。まだ新しい返信はない。
+  await calls.clock.advance(30_000)
+  expect(calls.mcp.length).toBe(afterCommand + 2)
+  expect(calls.mcp.slice(-2)).toEqual([`claude-code-remote/get_session/${CHILD}`, `claude-code-remote/list_events/${CHILD}`])
+  expect(await ui.find({ type: 'Text', text: /より前の返信/ })).toBeDefined()
+
+  // 指示への返事が届くと、次の取得で印が消える。
+  calls.reply = '状態: レビュー待ちです。'
+  calls.replyAt = new Date(calls.clock.now() + 10_000).toISOString()
+  await calls.clock.advance(30_000)
+  expect(await ui.find({ type: 'Markdown', text: '状態: レビュー待ちです。' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /より前の返信/ })).toBeUndefined()
+
+  // 90 秒後にももう 1 回取り直す。
+  const before = calls.mcp.length
+  await calls.clock.advance(30_000)
+  expect(calls.mcp.length).toBe(before + 2)
   await ui.unmount()
 })
 

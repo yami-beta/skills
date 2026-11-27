@@ -13,10 +13,12 @@ import {
   bucketLabel,
   bucketTone,
   cardLayout,
+  cutMarkdown,
   doneText,
   errorText,
   fmtTime,
   instructionText,
+  isReplyBeforeSent,
   latestReply,
   oneLine,
   parseBoard,
@@ -37,18 +39,23 @@ const TOOL = 'update_board'
 const SERVER = 'claude-code-remote'
 const REFRESH_MS = 60_000
 const STORE_KEY = 'board'
-const REPLY_MAX = 600
+const REPLY_MAX = 4000
+const REPLY_LINES = 10
+// 指示を送ったあと、次の定期取得を待たずに取り直す間隔。
+const FOLLOW_UP_MS = [30_000, 90_000]
 
 // 値の形を変えたらタグを上げる。前の版が残した値は読まずに捨てる。
 const board = atom({ plugin: 'task-board', key: 'board' } as const, null as Board | null, { shape: 'board-1' })
 const live = atom({ plugin: 'task-board', key: 'live' } as const, {} as Record<string, ChildLive>, { shape: 'live-1' })
 const pending = atom({ plugin: 'task-board', key: 'pending' } as const, null as Pending)
 const expanded = atom({ plugin: 'task-board', key: 'expanded' } as const, {} as Record<string, boolean>)
+const sent = atom({ plugin: 'task-board', key: 'sent' } as const, {} as Record<string, number>)
 const notice = atom({ plugin: 'task-board', key: 'notice' } as const, '')
 const refreshing = atom({ plugin: 'task-board', key: 'refreshing' } as const, false)
 
 // 取得中かどうかはモジュールの変数で持つ。hot reload で初期化されるので、取得の途中で reload しても止まったままにならない。
 let inflight: Promise<void> | null = null
+const inflightChild = new Map<string, Promise<void>>()
 
 type Stored = { sessionId: string; board: Board }
 
@@ -104,12 +111,23 @@ async function fetchChild($: EngineInterface, id: string): Promise<void> {
   }
 }
 
+/** 1 人の子を取り直す。同じ子の取得中なら、その取得の終わりを待つ。 */
+function refreshChild($: EngineInterface, id: string): Promise<void> {
+  const running = inflightChild.get(id)
+  if (running) return running
+  const p = fetchChild($, id).finally(() => {
+    inflightChild.delete(id)
+  })
+  inflightChild.set(id, p)
+  return p
+}
+
 async function refreshAll($: EngineInterface): Promise<void> {
   const ids = claudeChildren(await read($, board))
   if (ids.length === 0) return
   await update($, refreshing, () => true)
   try {
-    for (const id of ids) await fetchChild($, id)
+    for (const id of ids) await refreshChild($, id)
   } finally {
     await update($, refreshing, () => false)
   }
@@ -140,16 +158,26 @@ async function sendInstruction($: EngineInterface, p: NonNullable<Pending>): Pro
   }
   await update($, notice, () => `#${p.task} への指示を管理セッションに送りました。`)
   void $.prompt.submit({ text: instructionText(b, t, t.child, p.text) })
+  const child = t.child
+  const now = await $.clock.now()
+  await update($, sent, all => ({ ...all, [child.id]: now }))
+  // 送った指示への返事が早く出るよう、次の定期取得を待たずに取り直す。
+  if (child.runner === 'claude') {
+    for (const ms of FOLLOW_UP_MS) {
+      $.clock.after(ms, () => {
+        void refreshChild($, child.id)
+      })
+    }
+  }
 }
 
 type RenderEvent = Parameters<EngineInterface['ui']['resolve']>[0]
 
 const LABEL_WIDTH = 8
 const SUMMARY_MAX = 80
-const REPLY_MAX_SHOWN = 400
 
 async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number | undefined) {
-  const { Box, Text, Button, Input, Link, Progress } = $.ui.resolve(e)
+  const { Box, Text, Button, Input, Link, Markdown, Progress } = $.ui.resolve(e)
   const b = await read($, board)
   if (!b) {
     return (
@@ -165,6 +193,7 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
   const all = await read($, live)
   const wait = await read($, pending)
   const open = await read($, expanded)
+  const sentAt = await read($, sent)
   const note = await read($, notice)
   const busy = await read($, refreshing)
   const r = b.requirement
@@ -189,6 +218,23 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
       </Box>
     </Box>
   )
+  // 詳細を開いたときの最新の返信。Markdown のまま行数で切り、送った指示より前の返信には印を付ける。
+  const replyBlock = (task: number, L: ChildLive, sentAtMs: number | undefined) => {
+    const isStale = !!L.reply && isReplyBeforeSent(L.replyAt, sentAtMs)
+    const cut = L.reply ? cutMarkdown(L.reply, REPLY_LINES) : null
+    return (
+      <Box key={`reply-${task}`} flexDirection="column">
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Text dimColor>最新の返信{L.replyAt ? `（${fmtTime(L.replyAt)}）` : ''}</Text>
+          {isStale ? chip(`stale-${task}`, `指示（${fmtTime(sentAtMs)}）より前の返信`, 'attention') : null}
+        </Box>
+        {cut ? <Markdown text={cut.text} /> : <Text dimColor>まだありません。</Text>}
+        {cut?.isCut ? (
+          <Text dimColor>{`… 続きがあります（全 ${cut.totalLines} 行のうち先頭 ${REPLY_LINES} 行）。全文は担当の子で確認してください。`}</Text>
+        ) : null}
+      </Box>
+    )
+  }
   const tally = [
     { key: 'working', label: '作業中', n: counts.working, tone: 'info' as const },
     { key: 'waiting', label: '対応待ち', n: counts.waiting, tone: 'attention' as const },
@@ -298,12 +344,7 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
               ) : null}
               {c && isOpen && !isConfirming ? (
                 <Box flexDirection="column" gap={1}>
-                  {c.runner === 'claude' ? (
-                    <Box flexDirection="column">
-                      <Text dimColor>最新の返信{L.replyAt ? `（${fmtTime(L.replyAt)}）` : ''}</Text>
-                      <Text>{L.reply ? oneLine(L.reply, REPLY_MAX_SHOWN) : 'まだありません。'}</Text>
-                    </Box>
-                  ) : null}
+                  {c.runner === 'claude' ? replyBlock(t.number, L, sentAt[c.id]) : null}
                   <Input
                     key={`draft-${t.number}`}
                     label="追加指示"
@@ -387,7 +428,7 @@ export const register: Register = on => {
   on('command.run', { command: 'task-board' }, async $ => {
     await openPane($)
     await refresh($)
-    return { text: summaryText(await read($, board), await read($, live)) }
+    return { text: summaryText(await read($, board), await read($, live), await read($, sent)) }
   })
 
   // mod の描画先（デスクトップ・ターミナルなど）ではパネルがあるので、一覧の代わりに一言だけ出す。
