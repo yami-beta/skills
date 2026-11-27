@@ -93,6 +93,8 @@ done
 ## Repository structure
 
 ```text
+.claude/
+└── skills/<skill-name>   # project scope の skill の symlink（このリポジトリ自身で使う）
 .claude-plugin/
 └── marketplace.json      # Claude Code plugin marketplace と各 plugin の skill 構成
 skills/
@@ -103,6 +105,8 @@ skills/
     ├── assets/           # 任意: テンプレートなどの静的リソース
     └── agents/           # 任意: Codex/OpenAI 向け UI metadata
 ```
+
+このリポジトリ自身での作業では、project scope での導入が適した Software factory の skill（`setup-workflow`, `plan-requirement`, `manage-task-sessions`, `pick-task`, `implement-task`, `create-follow-up`, `sync-issues`）を、`.claude/skills/` の symlink から `skills/` の正本のまま読み込みます。checkout した branch の skill が使われるため、クラウドセッションでも setup script や plugin の導入は不要で、skill を編集する子セッションも変更中の内容で動作します。呼び出し名は `/implement-task` のように修飾なしになります。`commit` や `pr-create` などの汎用 skill は対象外のため、user scope で導入します。symlink 対象の skill を plugin や `gh skill` でも導入していると重複して表示されるため、このリポジトリでは導入しないでください。
 
 `SKILL.md` の `name` は親ディレクトリ名と一致させ、64文字以内の lowercase kebab-case にします。`description` には skill の機能と発火条件の両方を記載します。`agents/` は Agent Skills specification が許容する追加ディレクトリであり、skill の移植性に必要な情報は `SKILL.md` と標準リソース内に保持します。
 
@@ -287,7 +291,7 @@ native relationship の設定、再取得、または照合に失敗した task 
 
 ## Validation
 
-`gh skill publish --dry-run` で全 skill を Agent Skills specification に対して、`claude plugin validate .` で marketplace の定義を検証します。skill を追加・改名・削除したときは、`.claude-plugin/marketplace.json` の各 plugin の `skills` も更新します。
+`gh skill publish --dry-run` で全 skill を Agent Skills specification に対して、`claude plugin validate .` で marketplace の定義を検証します。skill を追加・改名・削除したときは、`.claude-plugin/marketplace.json` の各 plugin の `skills` と、project scope の skill であれば `.claude/skills/` の symlink も更新します。
 
 ```sh
 rg -n 'label[-]free|without (using|relying on) label[s]' README.md skills
