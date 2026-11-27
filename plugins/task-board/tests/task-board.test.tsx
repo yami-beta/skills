@@ -59,6 +59,9 @@ type Calls = {
   mcp: string[]
   fail: boolean
   bucket: string
+  remote: boolean
+  throws: boolean
+  connects: number
   reply: string
   replyAt: string
   clock: MockClock
@@ -78,6 +81,9 @@ function engine(on: On, store: Record<string, unknown> = {}): Calls {
     mcp: [],
     fail: false,
     bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY',
+    remote: true,
+    throws: false,
+    connects: 0,
     reply: 'PR #50 を作成しました。検証はすべて通っています。',
     replyAt: '2026-11-27T09:01:00Z',
     clock,
@@ -94,8 +100,19 @@ function engine(on: On, store: Record<string, unknown> = {}): Calls {
     calls.submitted.push(e.text)
     return { text: e.text }
   })
+  // 手元の Claude Code のように claude-code-remote がない場合は、接続の確認でつながっていないと答え、呼び出しも失敗する。
+  on('mcp.connect', (_, e) => {
+    calls.connects++
+    return calls.remote
+      ? { value: { isConnected: true, server: e.server } }
+      : { value: { isConnected: false, reason: 'unlisted', message: `${e.server} is not listed` } }
+  })
   on('mcp.call', (_, e) => {
     calls.mcp.push(`${e.server}/${e.tool}/${String(e.args.session_id)}`)
+    if (!calls.remote) {
+      throw new Error(`$.mcp.call: no connected MCP tool "${e.tool}" on a server named "${e.server}"`)
+    }
+    if (calls.throws) throw new Error('request timed out')
     if (calls.fail) {
       return { value: { content: [{ type: 'text', text: 'session not found' }], isError: true } }
     }
@@ -431,6 +448,100 @@ test('指示を送ったあとは 30 秒後と 90 秒後に取り直し、それ
   const before = calls.mcp.length
   await calls.clock.advance(30_000)
   expect(calls.mcp.length).toBe(before + 2)
+  await ui.unmount()
+})
+
+const OFFLINE = 'このセッションでは claude-code-remote が使えないため、子の状態は自動取得しません。表示は管理セッションの記録です。'
+
+test('claude-code-remote がないセッションでは自動取得を止め、記録だけを表示する', async ($, on) => {
+  const calls = engine(on)
+  calls.remote = false
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+  // 接続の確認でつながっていないと分かり、1 回の呼び出しも失敗したところで止める。
+  expect(calls.mcp).toEqual([`claude-code-remote/get_session/${CHILD}`])
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    const texts = (await ui.findAll({ type: 'Text' })).map(x => x.text)
+    expect(texts.filter(x => x === OFFLINE).length).toBe(1)
+    expect(texts.some(x => x.includes('取得できませんでした'))).toBe(false)
+    // 行の状態ラベルは記録された state だけ。
+    expect(await ui.find({ type: 'Text', text: /^ 未取得 $/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /^ review $/ })).toBeDefined()
+    expect(texts).toContain('自動取得なし')
+    expect((await ui.find({ type: 'Box', key: 'task-48' }))?.props.borderColor).toBeUndefined()
+    await ui.press({ key: 'details-48' })
+    expect(await ui.find({ type: 'Text', text: /最新の返信/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeDefined()
+    await ui.press({ key: 'details-48' })
+    await ui.unmount()
+  }
+
+  // 60 秒ごとの取得も、送信後の追加取得もしない。送信はこれまでどおり管理会話に入れる。
+  await calls.clock.advance(60_000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  await ui.press({ key: 'quick-48' })
+  expect(calls.submitted.length).toBe(1)
+  expect(calls.submitted[0]).toContain(`[管理ボード] yami-beta/skills#48 の担当（Claude Code ${CHILD}）`)
+  await calls.clock.advance(120_000)
+  expect(calls.mcp.length).toBe(1)
+  await ui.unmount()
+
+  // /task-board の一覧にも同じ旨を添え、自動取得の状態は出さない。
+  const list = String((await runCommand($)).text)
+  expect(list).toContain(OFFLINE)
+  expect(list).toContain(`  - 担当: Claude Code ${CHILD}\n`)
+  expect(list).not.toContain('最終取得')
+  expect(calls.mcp.length).toBe(1)
+})
+
+test('「状況を更新」を押したときだけもう一度試し、つながれば自動取得を再開する', async ($, on) => {
+  const calls = engine(on)
+  calls.remote = false
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+  expect(calls.mcp.length).toBe(1)
+
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 60 } })
+  // まだない: 押すと 1 回だけ試して、止めたままにする。
+  await ui.press({ key: 'refresh' })
+  expect(calls.mcp.length).toBe(2)
+  expect(await ui.find({ type: 'Text', text: OFFLINE })).toBeDefined()
+
+  // つながった: 押すと取得し、表示と 60 秒ごとの取得が戻る。
+  calls.remote = true
+  await ui.press({ key: 'refresh' })
+  expect(calls.mcp.length).toBe(4)
+  expect(await ui.find({ type: 'Text', text: OFFLINE })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^ レビュー待ち $/ })).toBeDefined()
+  await calls.clock.advance(60_000)
+  expect(calls.mcp.length).toBe(6)
+  await ui.unmount()
+})
+
+test('つながっているのに呼び出しが失敗した行は、自動取得を止めずにその行の失敗として示す', async ($, on) => {
+  const calls = engine(on)
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+
+  // 接続の確認ではつながっているが、呼び出しが例外で失敗する（一時的なエラー）。
+  const connected = calls.connects
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  calls.throws = true
+  await ui.press({ key: 'refresh' })
+  expect(calls.connects).toBe(connected + 1)
+  // テストの模擬が投げた例外は、kit を通ると別の文面で届く。行に失敗が出ることを確かめる。
+  expect(await ui.find({ type: 'Text', text: /^取得できませんでした: / })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: OFFLINE })).toBeUndefined()
+  // 直前の表示は残す。
+  expect(await ui.find({ type: 'Text', text: /^ レビュー待ち $/ })).toBeDefined()
+  const before = calls.mcp.length
+  await calls.clock.advance(60_000)
+  expect(calls.mcp.length).toBeGreaterThan(before)
   await ui.unmount()
 })
 

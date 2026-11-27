@@ -1,9 +1,10 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
-import type { Board, BoardTask, ChildLive, Pending } from '../types'
+import type { Board, BoardTask, ChildLive, Pending, Remote } from '../types'
 import type { Tone } from './board'
 import {
+  OFFLINE_TEXT,
   OPENED_TEXT,
   QUICK_ASK,
   UPDATE_BOARD_DESCRIPTION,
@@ -50,6 +51,7 @@ const live = atom({ plugin: 'task-board', key: 'live' } as const, {} as Record<s
 const pending = atom({ plugin: 'task-board', key: 'pending' } as const, null as Pending)
 const expanded = atom({ plugin: 'task-board', key: 'expanded' } as const, {} as Record<string, boolean>)
 const sent = atom({ plugin: 'task-board', key: 'sent' } as const, {} as Record<string, number>)
+const remote = atom({ plugin: 'task-board', key: 'remote' } as const, { status: 'unknown' } as Remote)
 const notice = atom({ plugin: 'task-board', key: 'notice' } as const, '')
 const refreshing = atom({ plugin: 'task-board', key: 'refreshing' } as const, false)
 
@@ -80,63 +82,117 @@ function claudeChildren(b: Board | null): string[] {
   return [...new Set(ids)]
 }
 
-async function fetchChild($: EngineInterface, id: string): Promise<void> {
+/** claude-code-remote を呼べるか。呼ぶ前に $.mcp.connect で確かめ、つながっていればその名前で呼ぶ。 */
+type Probe = { isConnected: true; server: string } | { isConnected: false; message: string }
+
+async function probeRemote($: EngineInterface): Promise<Probe> {
   try {
-    const s = await $.mcp.call(SERVER, 'get_session', { session_id: id })
-    if (s.isError) throw new Error(errorText(s.content) || 'get_session が失敗しました')
-    const ev = await $.mcp.call(SERVER, 'list_events', { session_id: id, kinds: ['result'], limit: 100 })
-    if (ev.isError) throw new Error(errorText(ev.content) || 'list_events が失敗しました')
-    const { bucket, summary } = readSession(parseJson(s.content))
-    const rep = latestReply(parseJson(ev.content))
-    const now = await $.clock.now()
-    await update($, live, all => {
-      const prev = all[id] ?? {}
-      const next: ChildLive = { ...prev, fetchedAt: now }
-      delete next.error
-      if (bucket !== undefined) next.bucket = bucket
-      if (summary !== undefined) next.summary = summary
-      if (rep) {
-        next.reply = rep.text.length > REPLY_MAX ? rep.text.slice(0, REPLY_MAX) + '…' : rep.text
-        if (rep.at !== undefined) next.replyAt = rep.at
-      }
-      return { ...all, [id]: next }
-    })
+    const conn = await $.mcp.connect(SERVER)
+    return conn.isConnected ? { isConnected: true, server: conn.server } : { isConnected: false, message: conn.message }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    // 失敗した行は直前の表示を残し、理由だけを添える。
-    await update($, live, all => ({
-      ...all,
-      [id]: { ...all[id], error: `取得できませんでした: ${message.slice(0, 200)}` },
-    }))
+    return { isConnected: false, message: err instanceof Error ? err.message : String(err) }
   }
 }
 
-/** 1 人の子を取り直す。同じ子の取得中なら、その取得の終わりを待つ。 */
+/**
+ * 1 人の子の状態と最新の返信を取る。
+ * `unreachable` は、接続の確認でつながっていないと分かったうえで呼び出し自体も失敗した場合。
+ * ツールの失敗（isError）や、つながっているのに起きた失敗は、その行の取得失敗として扱う。
+ */
+async function fetchChild($: EngineInterface, id: string, probe: Probe): Promise<'ok' | 'failed' | 'unreachable'> {
+  const server = probe.isConnected ? probe.server : SERVER
+  let s: Awaited<ReturnType<EngineInterface['mcp']['call']>>
+  let ev: Awaited<ReturnType<EngineInterface['mcp']['call']>>
+  try {
+    s = await $.mcp.call(server, 'get_session', { session_id: id })
+    if (!s.isError) ev = await $.mcp.call(server, 'list_events', { session_id: id, kinds: ['result'], limit: 100 })
+    else ev = s
+  } catch (err) {
+    if (!probe.isConnected) return 'unreachable'
+    await markError($, id, err instanceof Error ? err.message : String(err))
+    return 'failed'
+  }
+  if (s.isError) {
+    await markError($, id, errorText(s.content) || 'get_session が失敗しました')
+    return 'failed'
+  }
+  if (ev.isError) {
+    await markError($, id, errorText(ev.content) || 'list_events が失敗しました')
+    return 'failed'
+  }
+  const { bucket, summary } = readSession(parseJson(s.content))
+  const rep = latestReply(parseJson(ev.content))
+  const now = await $.clock.now()
+  await update($, live, all => {
+    const prev = all[id] ?? {}
+    const next: ChildLive = { ...prev, fetchedAt: now }
+    delete next.error
+    if (bucket !== undefined) next.bucket = bucket
+    if (summary !== undefined) next.summary = summary
+    if (rep) {
+      next.reply = rep.text.length > REPLY_MAX ? rep.text.slice(0, REPLY_MAX) + '…' : rep.text
+      if (rep.at !== undefined) next.replyAt = rep.at
+    }
+    return { ...all, [id]: next }
+  })
+  return 'ok'
+}
+
+// 失敗した行は直前の表示を残し、理由だけを添える。
+async function markError($: EngineInterface, id: string, message: string): Promise<void> {
+  await update($, live, all => ({
+    ...all,
+    [id]: { ...all[id], error: `取得できませんでした: ${message.slice(0, 200)}` },
+  }))
+}
+
+async function setUnavailable($: EngineInterface, message: string): Promise<void> {
+  await update($, remote, (): Remote => ({ status: 'unavailable', reason: message.slice(0, 200) }))
+}
+
+/** 1 人の子を取り直す（送信後の追加取得）。自動取得を止めているときや、同じ子の取得中は何もしない。 */
 function refreshChild($: EngineInterface, id: string): Promise<void> {
   const running = inflightChild.get(id)
   if (running) return running
-  const p = fetchChild($, id).finally(() => {
+  const p = (async () => {
+    if ((await read($, remote)).status === 'unavailable') return
+    const probe = await probeRemote($)
+    const result = await fetchChild($, id, probe)
+    if (result === 'unreachable') await setUnavailable($, probe.isConnected ? '' : probe.message)
+  })().finally(() => {
     inflightChild.delete(id)
   })
   inflightChild.set(id, p)
   return p
 }
 
-async function refreshAll($: EngineInterface): Promise<void> {
+/**
+ * claude の子をすべて取り直す。claude-code-remote が使えないと分かったセッションでは、
+ * `isRetry`（「状況を更新」）のときだけもう一度試す。
+ */
+async function refreshAll($: EngineInterface, isRetry: boolean): Promise<void> {
   const ids = claudeChildren(await read($, board))
   if (ids.length === 0) return
+  if (!isRetry && (await read($, remote)).status === 'unavailable') return
   await update($, refreshing, () => true)
   try {
-    for (const id of ids) await refreshChild($, id)
+    const probe = await probeRemote($)
+    for (const id of ids) {
+      if ((await fetchChild($, id, probe)) === 'unreachable') {
+        await setUnavailable($, probe.isConnected ? '' : probe.message)
+        return
+      }
+    }
+    await update($, remote, (): Remote => ({ status: 'available' }))
   } finally {
     await update($, refreshing, () => false)
   }
 }
 
 /** 実行先が claude の子の状態と最新の返信を取り直す。取得中なら、その取得の終わりを待つ。 */
-function refresh($: EngineInterface): Promise<void> {
+function refresh($: EngineInterface, isRetry = false): Promise<void> {
   if (!inflight) {
-    inflight = refreshAll($).finally(() => {
+    inflight = refreshAll($, isRetry).finally(() => {
       inflight = null
     })
   }
@@ -190,7 +246,9 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
       </Box>
     )
   }
-  const all = await read($, live)
+  // claude-code-remote が使えないセッションでは、自動取得した値を使わず記録だけを出す。
+  const isOffline = (await read($, remote)).status === 'unavailable'
+  const all: Record<string, ChildLive> = isOffline ? {} : await read($, live)
   const wait = await read($, pending)
   const open = await read($, expanded)
   const sentAt = await read($, sent)
@@ -260,10 +318,15 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
             </Box>
           ) : null}
         </Box>
+        {hasClaude && isOffline ? (
+          <Text color={toneColor('attention')}>{OFFLINE_TEXT}</Text>
+        ) : null}
         {hasClaude ? (
           <Box flexDirection="row" gap={2} flexWrap="wrap">
-            <Button key="refresh" label="状況を更新" onPress={() => void refresh($)} />
-            <Text dimColor>{busy ? '更新中…' : '1 分ごとに自動更新（参考情報）'}</Text>
+            <Button key="refresh" label="状況を更新" onPress={() => void refresh($, true)} />
+            <Text dimColor>
+              {busy ? '更新中…' : isOffline ? '自動取得を止めています（押すともう一度試します）' : '1 分ごとに自動更新（参考情報）'}
+            </Text>
           </Box>
         ) : null}
       </Box>
@@ -298,7 +361,9 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
                 <Link href={t.url} label={`#${t.number} ${t.title}`} />
                 <Box flexDirection="row" gap={1} flexWrap="wrap">
                   {chip(`state-${t.number}`, stateLabel(t.state), stateTone(t.state))}
-                  {c?.runner === 'claude' ? chip(`bucket-${t.number}`, bucketLabel(L.bucket), bucketTone(L.bucket)) : null}
+                  {c?.runner === 'claude' && !isOffline
+                    ? chip(`bucket-${t.number}`, bucketLabel(L.bucket), bucketTone(L.bucket))
+                    : null}
                 </Box>
               </Box>
               <Box flexDirection="column">
@@ -324,7 +389,13 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
                   ? field(
                       `fetched-${t.number}`,
                       '最終取得',
-                      <Text dimColor={c.runner === 'codex'}>{c.runner === 'claude' ? fmtTime(L.fetchedAt) : '自動取得なし（Codex）'}</Text>,
+                      c.runner === 'codex' ? (
+                        <Text dimColor>自動取得なし（Codex）</Text>
+                      ) : isOffline ? (
+                        <Text dimColor>自動取得なし</Text>
+                      ) : (
+                        <Text>{fmtTime(L.fetchedAt)}</Text>
+                      ),
                     )
                   : null}
                 {c?.runner === 'claude' && L.summary
@@ -344,7 +415,7 @@ async function boardTree($: EngineInterface, e: RenderEvent, bodyColumns: number
               ) : null}
               {c && isOpen && !isConfirming ? (
                 <Box flexDirection="column" gap={1}>
-                  {c.runner === 'claude' ? replyBlock(t.number, L, sentAt[c.id]) : null}
+                  {c.runner === 'claude' && !isOffline ? replyBlock(t.number, L, sentAt[c.id]) : null}
                   <Input
                     key={`draft-${t.number}`}
                     label="追加指示"
@@ -395,6 +466,8 @@ export const register: Register = on => {
       isDeferred: false,
     })
     await update($, refreshing, () => false)
+    // 読み込み直したプロセスでは MCP サーバーが変わり得るので、使えるかどうかを確かめ直す。
+    await update($, remote, (): Remote => ({ status: 'unknown' }))
     await restore($)
     void refresh($)
     $.clock.every(REFRESH_MS, () => {
@@ -428,7 +501,8 @@ export const register: Register = on => {
   on('command.run', { command: 'task-board' }, async $ => {
     await openPane($)
     await refresh($)
-    return { text: summaryText(await read($, board), await read($, live), await read($, sent)) }
+    const isOffline = (await read($, remote)).status === 'unavailable'
+    return { text: summaryText(await read($, board), await read($, live), await read($, sent), isOffline) }
   })
 
   // mod の描画先（デスクトップ・ターミナルなど）ではパネルがあるので、一覧の代わりに一言だけ出す。

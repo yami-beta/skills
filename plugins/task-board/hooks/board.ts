@@ -3,6 +3,8 @@
 import type { Board, BoardChild, BoardPullRequest, BoardTask, ChildLive, Runner } from '../types'
 
 export const OPENED_TEXT = '管理ボードを開きました。'
+export const OFFLINE_TEXT =
+  'このセッションでは claude-code-remote が使えないため、子の状態は自動取得しません。表示は管理セッションの記録です。'
 export const QUICK_ASK = '現在の状態を一言で報告してください。何も変更しないでください。'
 const REPLY_HEAD = 200
 
@@ -210,6 +212,7 @@ export function summaryText(
   board: Board | null,
   live: Record<string, ChildLive>,
   sent: Record<string, number> = {},
+  isOffline = false,
 ): string {
   if (!board) {
     return [
@@ -219,6 +222,7 @@ export function summaryText(
     ].join('\n')
   }
   const r = board.requirement
+  if (isOffline) live = {}
   const lines = [
     `**管理ボード: ${r.repository}#${r.number} ${r.title}**（${r.state}）`,
     `${doneText(boardCounts(board, live))} · 管理セッションの確認: ${fmtTime(board.checkedAt)}`,
@@ -237,6 +241,10 @@ export function summaryText(
       lines.push(`  - 担当: Codex ${c.id}（自動取得しません。上の状態は管理セッションの記録です）`)
       continue
     }
+    if (isOffline) {
+      lines.push(`  - 担当: Claude Code ${c.id}`)
+      continue
+    }
     const L = live[c.id] ?? {}
     lines.push(`  - 担当: Claude Code ${c.id} · 状態 ${bucketLabel(L.bucket)}（最終取得 ${fmtTime(L.fetchedAt)}）`)
     if (L.error) lines.push(`  - ${L.error}`)
@@ -247,6 +255,7 @@ export function summaryText(
   }
   lines.push(
     '',
+    ...(isOffline ? [OFFLINE_TEXT] : []),
     '自動取得した状態は参考情報です。追加指示は、この会話に「#<task 番号> の担当に〜と伝えて」のように書いてください。',
   )
   return lines.join('\n')

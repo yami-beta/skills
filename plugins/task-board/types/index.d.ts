@@ -54,6 +54,9 @@ export type ChildLive = {
   error?: string
 }
 
+/** claude-code-remote を使えるか。`unavailable` のあいだは自動取得を止める。 */
+export type Remote = { status: 'unknown' | 'available' | 'unavailable'; reason?: string }
+
 /** 確認待ちの追加指示。 */
 export type Pending = { task: number; childId: string; text: string } | null
 
@@ -67,6 +70,7 @@ declare module 'claude-code' {
       expanded: Record<string, boolean>
       /** 子の ID ごとに、最後に指示を送った時刻（ミリ秒）。 */
       sent: Record<string, number>
+      remote: Remote
       notice: string
       refreshing: boolean
     }
