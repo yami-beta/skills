@@ -2,23 +2,31 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Board, BoardTask, ChildLive, Pending } from '../types'
+import type { Tone } from './board'
 import {
   OPENED_TEXT,
   QUICK_ASK,
   UPDATE_BOARD_DESCRIPTION,
   UPDATE_BOARD_SCHEMA,
   asBoard,
+  boardCounts,
   bucketLabel,
+  bucketTone,
+  doneText,
   errorText,
   fmtTime,
   instructionText,
   latestReply,
   parseBoard,
   parseJson,
-  prLabel,
+  prTone,
   readSession,
+  rowTone,
   runnerLabel,
+  stateLabel,
+  stateTone,
   summaryText,
+  toneColor,
 } from './board'
 
 const PANE = 'task-board'
@@ -33,6 +41,7 @@ const REPLY_MAX = 600
 const board = atom({ plugin: 'task-board', key: 'board' } as const, null as Board | null, { shape: 'board-1' })
 const live = atom({ plugin: 'task-board', key: 'live' } as const, {} as Record<string, ChildLive>, { shape: 'live-1' })
 const pending = atom({ plugin: 'task-board', key: 'pending' } as const, null as Pending)
+const expanded = atom({ plugin: 'task-board', key: 'expanded' } as const, {} as Record<string, boolean>)
 const notice = atom({ plugin: 'task-board', key: 'notice' } as const, '')
 const refreshing = atom({ plugin: 'task-board', key: 'refreshing' } as const, false)
 
@@ -134,7 +143,7 @@ async function sendInstruction($: EngineInterface, p: NonNullable<Pending>): Pro
 type RenderEvent = Parameters<EngineInterface['ui']['resolve']>[0]
 
 async function boardTree($: EngineInterface, e: RenderEvent) {
-  const { Box, Text, Button, Input, Link } = $.ui.resolve(e)
+  const { Box, Text, Button, Input, Link, Progress } = $.ui.resolve(e)
   const b = await read($, board)
   if (!b) {
     return (
@@ -147,17 +156,41 @@ async function boardTree($: EngineInterface, e: RenderEvent) {
   }
   const all = await read($, live)
   const wait = await read($, pending)
+  const open = await read($, expanded)
   const note = await read($, notice)
   const busy = await read($, refreshing)
   const r = b.requirement
   const hasClaude = claudeChildren(b).length > 0
+  const counts = boardCounts(b, all)
+
+  // 色付きの小さなラベル。背景を意味の色にし、文字は反転色にする。
+  const chip = (key: string, label: string, tone: Tone) => (
+    <Text key={key} backgroundColor={toneColor(tone)} color="inverseText">
+      {` ${label} `}
+    </Text>
+  )
+  const tally = [
+    { key: 'working', label: '作業中', n: counts.working, tone: 'info' as const },
+    { key: 'waiting', label: '対応待ち', n: counts.waiting, tone: 'attention' as const },
+    { key: 'review', label: 'レビュー待ち', n: counts.review, tone: 'good' as const },
+    { key: 'failed', label: '失敗・取得できず', n: counts.failed, tone: 'problem' as const },
+  ].filter(x => x.n > 0)
 
   return (
     <Box flexDirection="column" gap={1}>
       <Box flexDirection="column">
-        <Link href={r.url} label={`${r.repository}#${r.number} ${r.title}`} />
-        <Text dimColor>
-          {r.state} · 管理セッションの確認 {fmtTime(b.checkedAt)}
+        <Box flexDirection="row" gap={1} flexWrap="wrap">
+          <Link href={r.url} label={`${r.repository}#${r.number} ${r.title}`} />
+          {chip('req-state', stateLabel(r.state), stateTone(r.state))}
+        </Box>
+        <Progress label="task の完了" value={counts.done} max={Math.max(counts.total, 1)} valueText={doneText(counts)} />
+        {tally.length > 0 ? (
+          <Box flexDirection="row" gap={1} flexWrap="wrap">
+            {tally.map(x => chip(`tally-${x.key}`, `${x.label} ${x.n} 件`, x.tone))}
+          </Box>
+        ) : null}
+        <Text dimColor size="caption">
+          管理セッションの確認 {fmtTime(b.checkedAt)}
         </Text>
       </Box>
       {hasClaude ? (
@@ -170,39 +203,78 @@ async function boardTree($: EngineInterface, e: RenderEvent) {
       {b.tasks.length === 0 ? <Text dimColor>記録された task はありません。</Text> : null}
       {b.tasks.map(t => {
         const c = t.child
-        const L = c ? (all[c.id] ?? {}) : {}
-        const isConfirming = wait?.task === t.number
+        const L: ChildLive = c?.runner === 'claude' ? (all[c.id] ?? {}) : {}
+        const isConfirming = !!c && wait?.task === t.number
+        const isOpen = !!open[String(t.number)]
+        const attention = rowTone(t, L)
+        const toggle = () => void update($, expanded, all => ({ ...all, [String(t.number)]: !all[String(t.number)] }))
         return (
-          <Box key={`task-${t.number}`} flexDirection="column" borderStyle="round" paddingX={1}>
-            <Link href={t.url} label={`#${t.number} ${t.title}`} />
-            <Text dimColor>
-              {t.state} · {prLabel(t.pr)}
-            </Text>
-            {t.pr ? (
-              <Link href={t.pr.url} label={`PR #${t.pr.number}`} />
-            ) : null}
-            {!c ? <Text dimColor>担当: なし</Text> : null}
-            {c ? (
-              <Text dimColor>
-                担当: {runnerLabel(c.runner)} {c.id}
+          <Box
+            key={`task-${t.number}`}
+            flexDirection="column"
+            borderStyle="round"
+            borderColor={attention ? toneColor(attention) : undefined}
+            paddingX={1}
+          >
+            <Box flexDirection="row" gap={1} flexWrap="wrap">
+              <Link href={t.url} label={`#${t.number} ${t.title}`} />
+              {chip(`state-${t.number}`, stateLabel(t.state), stateTone(t.state))}
+              {c?.runner === 'claude' ? chip(`bucket-${t.number}`, bucketLabel(L.bucket), bucketTone(L.bucket)) : null}
+            </Box>
+            <Box flexDirection="row" gap={1} flexWrap="wrap">
+              {t.pr ? chip(`pr-${t.number}`, `PR ${t.pr.state}`, prTone(t.pr.state)) : null}
+              {t.pr ? <Link href={t.pr.url} label={`PR #${t.pr.number}`} /> : <Text dimColor size="caption">PR なし</Text>}
+              <Text dimColor size="caption">
+                {c ? `· 担当 ${runnerLabel(c.runner)} ${c.id}` : '· 担当: なし'}
               </Text>
-            ) : null}
-            {c?.url ? (
-              <Link href={c.url} label="担当の子を開く" />
-            ) : null}
-            {c?.runner === 'codex' ? <Text dimColor>Codex の子は自動取得しません。上の状態は管理セッションの記録です。</Text> : null}
+              {c?.url ? <Link href={c.url} label="開く" /> : null}
+            </Box>
             {c?.runner === 'claude' ? (
-              <Text>
-                状態: {bucketLabel(L.bucket)}（最終取得 {fmtTime(L.fetchedAt)}）
+              <Text dimColor size="caption">
+                最終取得 {fmtTime(L.fetchedAt)}
+                {L.summary ? ` · ${L.summary}` : ''}
               </Text>
             ) : null}
-            {c?.runner === 'claude' && L.summary ? <Text dimColor>{L.summary}</Text> : null}
-            {c?.runner === 'claude' && L.reply ? (
-              <Text>
-                最新の返信（{fmtTime(L.replyAt)}）: {L.reply}
+            {c?.runner === 'codex' ? (
+              <Text dimColor size="caption">
+                Codex の子は自動取得しません。状態は管理セッションの記録です。
               </Text>
             ) : null}
-            {c?.runner === 'claude' && L.error ? <Text color="red">{L.error}</Text> : null}
+            {L.error ? <Text color={toneColor('problem')}>{L.error}</Text> : null}
+            {c && !isConfirming ? (
+              <Box flexDirection="row" gap={2}>
+                <Button
+                  key={`quick-${t.number}`}
+                  label="状況を報告してもらう"
+                  onPress={() => void sendInstruction($, { task: t.number, childId: c.id, text: QUICK_ASK })}
+                />
+                <Button key={`details-${t.number}`} label={isOpen ? '詳細を閉じる' : '詳細'} onPress={toggle} />
+              </Box>
+            ) : null}
+            {c && isOpen && !isConfirming ? (
+              <Box flexDirection="column" gap={1}>
+                {L.reply ? (
+                  <Text>
+                    最新の返信（{fmtTime(L.replyAt)}）: {L.reply}
+                  </Text>
+                ) : c.runner === 'claude' ? (
+                  <Text dimColor>最新の返信はまだありません。</Text>
+                ) : null}
+                <Input
+                  key={`draft-${t.number}`}
+                  label="追加指示"
+                  placeholder="Enter で宛先と指示文の確認へ"
+                  submitLabel="確認"
+                  rows={2}
+                  onSubmit={text => {
+                    const trimmed = text.trim()
+                    if (!trimmed) return
+                    void update($, notice, () => '')
+                    void update($, pending, () => ({ task: t.number, childId: c.id, text: trimmed }))
+                  }}
+                />
+              </Box>
+            ) : null}
             {c && isConfirming && wait ? (
               <Box flexDirection="column">
                 <Text>
@@ -218,28 +290,6 @@ async function boardTree($: EngineInterface, e: RenderEvent) {
                   />
                   <Button key={`cancel-${t.number}`} label="やめる" onPress={() => void update($, pending, () => null)} />
                 </Box>
-              </Box>
-            ) : null}
-            {c && !isConfirming ? (
-              <Box flexDirection="column" gap={1}>
-                <Button
-                  key={`quick-${t.number}`}
-                  label="状況を報告してもらう"
-                  onPress={() => void sendInstruction($, { task: t.number, childId: c.id, text: QUICK_ASK })}
-                />
-                <Input
-                  key={`draft-${t.number}`}
-                  label="追加指示"
-                  placeholder="Enter で宛先と指示文の確認へ"
-                  submitLabel="確認"
-                  rows={2}
-                  onSubmit={text => {
-                    const trimmed = text.trim()
-                    if (!trimmed) return
-                    void update($, notice, () => '')
-                    void update($, pending, () => ({ task: t.number, childId: c.id, text: trimmed }))
-                  }}
-                />
               </Box>
             ) : null}
           </Box>

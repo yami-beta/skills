@@ -45,15 +45,15 @@ const BOARD = {
     },
     {
       number: 51,
-      title: 'まだ担当のいない task',
+      title: '担当のいない完了済みの task',
       url: 'https://github.com/yami-beta/skills/issues/51',
-      state: 'workflow:ready',
+      state: 'closed',
     },
   ],
   checkedAt: '2026-11-27T09:00:00Z',
 }
 
-type Calls = { opened: number; submitted: string[]; mcp: string[]; fail: boolean; clock: MockClock }
+type Calls = { opened: number; submitted: string[]; mcp: string[]; fail: boolean; bucket: string; clock: MockClock }
 
 function text(value: unknown) {
   return { content: [{ type: 'text', text: JSON.stringify(value) }], isError: false }
@@ -63,7 +63,7 @@ function text(value: unknown) {
 function engine(on: On, store: Record<string, unknown> = {}): Calls {
   mock.store(on, store)
   const clock = mock.clock(on, { now: Date.UTC(2026, 10, 27, 9, 5) })
-  const calls: Calls = { opened: 0, submitted: [], mcp: [], fail: false, clock }
+  const calls: Calls = { opened: 0, submitted: [], mcp: [], fail: false, bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', clock }
   on('command.register', (_, e) => ({ value: { command: e.name } }))
   on('tool.register', (_, e) => ({ value: { tool: `mcp__task-board__${e.name}` } }))
   on('session.id', () => ({ value: SESSION }))
@@ -85,7 +85,7 @@ function engine(on: On, store: Record<string, unknown> = {}): Calls {
       // claude-code-remote の実際の応答と同じく ccr で包み、要約は task_summary に入る。
       return {
         value: text({
-          ccr: { id: CHILD, status_bucket: 'SESSION_STATUS_BUCKET_REVIEW_READY', task_summary: 'PR #50 を作成した' },
+          ccr: { id: CHILD, status_bucket: calls.bucket, task_summary: 'PR #50 を作成した' },
         }),
       }
     }
@@ -160,17 +160,35 @@ test('update_board の記録をパネルに表示し、claude の子だけ自動
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect(await ui.find({ type: 'Text', text: /状態: レビュー待ち/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /最終取得 11\/27/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'PR #50 を作成した' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /最新の返信.*PR #50 を作成しました/ })).toBeDefined()
+    // 上部の要約: 完了数の Progress（terminal と desktop では Box と Text になる）と集計のラベル。
+    expect(await ui.find({ type: 'Text', text: /task 3 件中 1 件完了/ })).toBeDefined()
+    expect((await ui.find({ type: 'Text', text: / レビュー待ち 1 件 / }))?.props.backgroundColor).toBe('success')
+    expect(await ui.find({ type: 'Text', text: /対応待ち/ })).toBeUndefined()
+    // 状態は色付きのラベルで、意味の色を揃える。
+    expect((await ui.find({ type: 'Text', text: /^ レビュー待ち $/ }))?.props.backgroundColor).toBe('success')
+    expect((await ui.find({ type: 'Text', text: /^ PR open $/ }))?.props.backgroundColor).toBe('success')
+    expect((await ui.find({ type: 'Text', text: /^ review $/ }))?.props.backgroundColor).toBe('success')
+    expect((await ui.find({ type: 'Text', text: /^ in-progress $/ }))?.props.backgroundColor).toBe('suggestion')
+    expect((await ui.find({ type: 'Text', text: /^ closed $/ }))?.props.backgroundColor).toBe('inactive')
+    expect(await ui.find({ type: 'Text', text: /最終取得 11\/27.*PR #50 を作成した/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Codex の子は自動取得しません/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '担当: なし' })).toBeDefined()
-    // 担当の子がいる行にだけ送信手段がある。
+    expect(await ui.find({ type: 'Text', text: '· 担当: なし' })).toBeDefined()
+    // 最新の返信と入力欄は詳細を開くまで出さない。
+    expect(await ui.find({ type: 'Text', text: /最新の返信/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeUndefined()
+    // 担当の子がいる行にだけ送信手段と詳細がある。折りたたみ中も「状況を報告してもらう」は出す。
     expect(await ui.find({ type: 'Button', key: 'quick-48' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'quick-49' })).toBeDefined()
     expect(await ui.find({ type: 'Button', key: 'quick-51' })).toBeUndefined()
-    expect(await ui.find({ type: 'Input', key: 'draft-51' })).toBeUndefined()
+    expect(await ui.find({ type: 'Button', key: 'details-51' })).toBeUndefined()
+
+    await ui.press({ key: 'details-48' })
+    expect(await ui.find({ type: 'Text', text: /最新の返信.*PR #50 を作成しました/ })).toBeDefined()
+    expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeDefined()
+    expect((await ui.find({ type: 'Button', key: 'details-48' }))?.props.label).toBe('詳細を閉じる')
+    expect(await ui.find({ type: 'Input', key: 'draft-49' })).toBeUndefined()
+    await ui.press({ key: 'details-48' })
+    expect(await ui.find({ type: 'Input', key: 'draft-48' })).toBeUndefined()
     await ui.unmount()
   }
 
@@ -208,9 +226,30 @@ test('取得に失敗した行は直前の表示を残して理由を示す', as
   calls.fail = true
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   await ui.press({ key: 'refresh' })
-  expect(await ui.find({ type: 'Text', text: /状態: レビュー待ち/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^ レビュー待ち $/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /取得できませんでした: session not found/ })).toBeDefined()
+  // 対応が必要な行は枠の色を変え、要約にも数える。
+  const row = await ui.find({ type: 'Box', key: 'task-48' })
+  expect(row?.props.borderColor).toBe('error')
+  expect((await ui.find({ type: 'Box', key: 'task-49' }))?.props.borderColor).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: / 失敗・取得できず 1 件 / })).toBeDefined()
   await ui.unmount()
+})
+
+test('対応待ちの子は注意の色のラベルと枠で示し、要約に数える', async ($, on) => {
+  const calls = engine(on)
+  calls.bucket = 'SESSION_STATUS_BUCKET_BLOCKED'
+  await start($)
+  await $.tool.call({ tool: 'mcp__task-board__update_board', ...BOARD })
+  await calls.clock.settle()
+
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.find({ type: 'Text', text: /^ 対応待ち $/ }))?.props.backgroundColor).toBe('warning')
+    expect((await ui.find({ type: 'Text', text: / 対応待ち 1 件 / }))?.props.backgroundColor).toBe('warning')
+    expect((await ui.find({ type: 'Box', key: 'task-48' }))?.props.borderColor).toBe('warning')
+    await ui.unmount()
+  }
 })
 
 test('「状況を報告してもらう」は確認なしで、入力欄は確認の後で管理会話に依頼を入れる', async ($, on) => {
@@ -220,6 +259,7 @@ test('「状況を報告してもらう」は確認なしで、入力欄は確�
   await calls.clock.settle()
 
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  // 「状況を報告してもらう」は折りたたみ中でも押せる。
   await ui.press({ key: 'quick-48' })
   expect(calls.submitted).toEqual([
     [
@@ -231,6 +271,7 @@ test('「状況を報告してもらう」は確認なしで、入力欄は確�
     ].join('\n'),
   ])
 
+  await ui.press({ key: 'details-49' })
   await ui.input({ key: 'draft-49', text: '  テストを追加してください  ' })
   // 確認の前には送らない。
   expect(calls.submitted.length).toBe(1)
@@ -249,6 +290,7 @@ test('「状況を報告してもらう」は確認なしで、入力欄は確�
   expect(await ui.find({ type: 'Text', text: /#49 への指示を管理セッションに送りました/ })).toBeDefined()
 
   // やめると送らない。
+  await ui.press({ key: 'details-48' })
   await ui.input({ key: 'draft-48', text: '取り消す指示' })
   await ui.press({ key: 'cancel-48' })
   expect(calls.submitted.length).toBe(2)
@@ -275,7 +317,8 @@ test('/task-board の返答は状況の一覧で、描画先では一言に描�
   expect(list).toContain(`  - 担当: Claude Code ${CHILD} · 状態 レビュー待ち（最終取得 11/27`)
   expect(list).toContain('  - 最新の返信: PR #50 を作成しました。検証はすべて通っています。')
   expect(list).toContain('  - 担当: Codex task_codex49（自動取得しません')
-  expect(list).toContain('- #51 まだ担当のいない task')
+  expect(list).toContain('task 3 件中 1 件完了 · 管理セッションの確認: ')
+  expect(list).toContain('- #51 担当のいない完了済みの task')
   expect(list).toContain('  - 担当: なし')
   expect(list).toContain('この会話に「#<task 番号> の担当に〜と伝えて」のように書いてください。')
 

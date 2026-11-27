@@ -217,7 +217,7 @@ export function summaryText(board: Board | null, live: Record<string, ChildLive>
   const r = board.requirement
   const lines = [
     `**管理ボード: ${r.repository}#${r.number} ${r.title}**（${r.state}）`,
-    `管理セッションの確認: ${fmtTime(board.checkedAt)}`,
+    `${doneText(boardCounts(board, live))} · 管理セッションの確認: ${fmtTime(board.checkedAt)}`,
     '',
   ]
   if (board.tasks.length === 0) lines.push('- 記録された task はありません。')
@@ -300,4 +300,99 @@ export function latestReply(ev: Raw): { text: string; at?: string } | null {
     }
   }
   return null
+}
+
+/** 意味の色。良い・注意・問題・進行中・中立・merged の 6 つに揃える。 */
+export type Tone = 'good' | 'attention' | 'problem' | 'info' | 'neutral' | 'merged'
+
+/** Tone をテーマの色名にする。テーマに従うので、ライト・ダークのどちらでも読める。 */
+export function toneColor(tone: Tone): string {
+  const map: Record<Tone, string> = {
+    good: 'success',
+    attention: 'warning',
+    problem: 'error',
+    info: 'suggestion',
+    neutral: 'inactive',
+    merged: 'merged',
+  }
+  return map[tone]
+}
+
+function bucketKey(bucket?: string): string {
+  return String(bucket ?? '')
+    .replace('SESSION_STATUS_BUCKET_', '')
+    .toLowerCase()
+}
+
+export function bucketTone(bucket?: string): Tone {
+  const map: Record<string, Tone> = {
+    working: 'info',
+    blocked: 'attention',
+    review_ready: 'good',
+    completed: 'neutral',
+    failed: 'problem',
+  }
+  return map[bucketKey(bucket)] ?? 'neutral'
+}
+
+export function prTone(state: string): Tone {
+  const s = state.toLowerCase()
+  if (s.includes('merged')) return 'merged'
+  if (s.includes('closed')) return 'problem'
+  if (s.includes('draft')) return 'neutral'
+  return 'good'
+}
+
+/** task の state は管理セッションが渡した文字列（open、workflow:* など）なので、含まれる語で色を決める。 */
+export function stateTone(state: string): Tone {
+  const s = state.toLowerCase()
+  if (s.includes('closed') || s.includes('completed') || s.includes('done')) return 'neutral'
+  if (s.includes('blocked') || s.includes('needs-input')) return 'attention'
+  if (s.includes('review')) return 'good'
+  if (s.includes('in-progress')) return 'info'
+  return 'neutral'
+}
+
+/** ラベルに出す task の state。`workflow:` の接頭辞は省く。 */
+export function stateLabel(state: string): string {
+  return state.replace(/workflow:/g, '').trim() || state
+}
+
+export function isTaskDone(t: BoardTask): boolean {
+  const s = t.state.toLowerCase()
+  return s.includes('closed') || s.includes('completed') || s.includes('done')
+}
+
+/** 行の注意の度合い。枠の色に使う。失敗と取得できなかった行は問題、対応待ちは注意。 */
+export function rowTone(t: BoardTask, L: ChildLive): Tone | undefined {
+  if (t.child?.runner === 'claude') {
+    if (L.error || bucketKey(L.bucket) === 'failed') return 'problem'
+    if (bucketKey(L.bucket) === 'blocked') return 'attention'
+  }
+  if (stateTone(t.state) === 'attention') return 'attention'
+  return undefined
+}
+
+export type BoardCounts = { total: number; done: number; working: number; waiting: number; review: number; failed: number }
+
+/** 上部の要約に出す集計。自動取得した状態は claude の子だけで数える。 */
+export function boardCounts(board: Board, live: Record<string, ChildLive>): BoardCounts {
+  const c: BoardCounts = { total: board.tasks.length, done: 0, working: 0, waiting: 0, review: 0, failed: 0 }
+  for (const t of board.tasks) {
+    if (isTaskDone(t)) {
+      c.done++
+      continue
+    }
+    const L = t.child?.runner === 'claude' ? (live[t.child.id] ?? {}) : {}
+    const b = bucketKey(L.bucket)
+    if (L.error || b === 'failed') c.failed++
+    else if (b === 'blocked' || stateTone(t.state) === 'attention') c.waiting++
+    else if (b === 'review_ready') c.review++
+    else if (b === 'working') c.working++
+  }
+  return c
+}
+
+export function doneText(c: BoardCounts): string {
+  return `task ${c.total} 件中 ${c.done} 件完了`
 }

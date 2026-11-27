@@ -63,6 +63,8 @@ declare module 'claude-code' {
       board: Shaped<Board | null>
       live: Shaped<Record<string, ChildLive>>
       pending: Pending
+      /** 行ごとの詳細の開閉。task 番号をキーにする。 */
+      expanded: Record<string, boolean>
       notice: string
       refreshing: boolean
     }
