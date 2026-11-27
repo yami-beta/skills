@@ -1,0 +1,10 @@
+{
+  "name": "task-board",
+  "description": "管理セッションが記録した task と担当の子をパネルに一覧し、管理会話経由で追加指示を送る管理ボード",
+  "author": {
+    "name": "yami-beta"
+  },
+  "repository": "https://github.com/yami-beta/skills",
+  "license": "MIT",
+  "types": "./types/index.d.ts"
+}

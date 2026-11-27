@@ -32,7 +32,7 @@
       },
       "repository": "https://github.com/yami-beta/skills",
       "license": "MIT",
-      "dependencies": ["yami-beta-skills"],
+      "dependencies": ["yami-beta-skills", "task-board"],
       "skills": [
         "./skills/setup-workflow",
         "./skills/plan-requirement",
@@ -42,6 +42,16 @@
         "./skills/create-follow-up",
         "./skills/sync-issues"
       ]
+    },
+    {
+      "name": "task-board",
+      "source": "./plugins/task-board",
+      "description": "管理セッションが記録した task と担当の子をパネルに一覧し、管理会話経由で追加指示を送る管理ボードの mod",
+      "author": {
+        "name": "yami-beta"
+      },
+      "repository": "https://github.com/yami-beta/skills",
+      "license": "MIT"
     }
   ]
 }
